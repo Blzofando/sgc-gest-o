@@ -32,7 +32,7 @@ export default function ProcessosPage() {
     setLoading(true);
     try {
       // 1. Fetch Processos
-      const pSnap = await getDocs(query(collection(db, "processos"), orderBy("createdAt", "desc")));
+      const pSnap = await getDocs(collection(db, "processos"));
       const pList = pSnap.docs.map(d => ({ id: d.id, ...d.data() })) as Processo[];
 
       // 2. Fetch Fornecedores
@@ -152,8 +152,7 @@ export default function ProcessosPage() {
               </DialogHeader>
               <ProcessoForm
                 onSuccess={() => { handleCloseDialog(); loadData(); }}
-                initialData={editingProcess}
-                processoId={editingProcess?.id}
+                dataToEdit={editingProcess}
               />
             </DialogContent>
           </Dialog>
@@ -198,9 +197,7 @@ export default function ProcessosPage() {
                 // Dados calculados para o detalhe
                 const valorTotal = proc.valorTotal || 0;
 
-                // Calcular Total Ganho (Soma dos itens vinculados a fornecedores)
-                // Simplificação: Se tiver itens, soma valorRef * qtd. Se tiver fornecedores vinculados, assumimos que ganharam.
-                // Melhor: Usar dados reais se disponíveis.
+                // Calcular Total Ganho
                 const totalGanho = proc.itens?.reduce((acc, item) => acc + (item.valorUnitarioRef * item.quantidade), 0) || 0;
 
                 // Calcular Total Empenhado

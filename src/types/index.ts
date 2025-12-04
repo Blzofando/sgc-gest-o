@@ -5,13 +5,14 @@ export interface ItemProcesso {
     valorUnitarioRef: number;
 }
 
-export type ProcessoStatus = "AGUARDANDO_FORNECEDOR" | "AGUARDANDO_EMPENHO" | "AGUARDANDO_ENTREGA" | "AGUARDANDO_LIQUIDACAO" | "CONCLUIDO" | "ATIVO" | "SUSPENSO";
+export type ProcessoStatus = "AGUARDANDO_FORNECEDOR" | "AGUARDANDO_EMPENHO" | "AGUARDANDO_ENTREGA" | "AGUARDANDO_LIQUIDACAO" | "AGUARDANDO_INICIO_ENTREGA" | "AGUARDANDO_ENVIO_ARTE" | "AGUARDANDO_APROVACAO_ARTE" | "EM_PRODUCAO" | "ENVIADO" | "AGUARDANDO_RECEBIMENTO" | "EM_ANDAMENTO" | "CONCLUIDO" | "ATIVO" | "SUSPENSO" | "CANCELADO";
 
 export interface Processo {
     id?: string;
     numero: string;
     modalidade: "PREGAO" | "DISPENSA" | "ADESAO" | "INEXIGIBILIDADE";
     objetoResumo: string;
+    descricao?: string; // Alias para objetoResumo
     modo: "SIMPLES" | "DETALHADO";
 
     // Novos Campos
@@ -20,6 +21,7 @@ export interface Processo {
     status: ProcessoStatus;
 
     valorTotalEstimado?: number;
+    valorTotal?: number; // Alias para valorTotalEstimado
     itens?: ItemProcesso[];
 
     dataCriacao: any;
