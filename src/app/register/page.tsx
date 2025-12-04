@@ -8,7 +8,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Loader2, ShieldCheck, UserPlus } from "lucide-react";
+import { Loader2, UserPlus } from "lucide-react";
 import Link from "next/link";
 
 export default function RegisterPage() {
@@ -16,7 +16,7 @@ export default function RegisterPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
-    const [loading, setLoading] = useState("");
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
     const router = useRouter();
 
