@@ -7,12 +7,24 @@ import { formatMoney } from "@/app/lib/formatters";
 import { motion } from "framer-motion";
 import {
     FileText, CheckCircle, AlertCircle, DollarSign,
-    Wallet, TrendingUp, Package
+    Wallet, TrendingUp, Package, Filter
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 export default function DashboardPage() {
     const [loading, setLoading] = useState(true);
+    const [selectedND, setSelectedND] = useState<string>("TODAS");
+    const [availableNDs, setAvailableNDs] = useState<string[]>([]);
+
+    // Armazena dados brutos para filtragem
+    const [rawData, setRawData] = useState<{
+        processos: any[],
+        empenhos: any[],
+        entregas: any[],
+        ncs: any[]
+    }>({ processos: [], empenhos: [], entregas: [], ncs: [] });
+
     const [stats, setStats] = useState({
         processosAbertos: 0,
         processosFinalizados: 0,
@@ -24,6 +36,7 @@ export default function DashboardPage() {
         valorLiquidado: 0,
     });
 
+    // 1. Carregar Dados Iniciais
     useEffect(() => {
         const loadDashboard = async () => {
             try {
@@ -40,34 +53,13 @@ export default function DashboardPage() {
                 const entregas = entSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const ncs = ncSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
-                // Processos
-                const processosAbertos = processos.filter((p: any) =>
-                    p.status !== "CONCLUIDO" && p.status !== "CANCELADO" && p.status !== "SUSPENSO"
-                ).length;
-                const processosFinalizados = processos.filter((p: any) => p.status === "CONCLUIDO").length;
+                // Extrair NDs únicas
+                const nds = new Set<string>();
+                ncs.forEach((nc: any) => nc.creditos?.forEach((c: any) => { if (c.nd) nds.add(c.nd) }));
+                empenhos.forEach((e: any) => { if (e.nd) nds.add(e.nd) });
+                setAvailableNDs(Array.from(nds).sort());
 
-                // Notas de Crédito
-                const ncsRecebidas = ncs.length;
-                const valorNcsRecebidas = ncs.reduce((acc: number, nc: any) => acc + (parseFloat(nc.valorTotal) || 0), 0);
-
-                // Empenhos
-                const empenhosEmitidos = empenhos.length;
-                const valorEmpenhado = empenhos.reduce((acc: number, e: any) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
-
-                // Recolhimento e Liquidação
-                const valorRecolhido = entregas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.recolhido) || 0), 0);
-                const valorLiquidado = entregas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.liquidado) || 0), 0);
-
-                setStats({
-                    processosAbertos,
-                    processosFinalizados,
-                    ncsRecebidas,
-                    valorNcsRecebidas,
-                    empenhosEmitidos,
-                    valorEmpenhado,
-                    valorRecolhido,
-                    valorLiquidado,
-                });
+                setRawData({ processos, empenhos, entregas, ncs });
 
             } catch (error) {
                 console.error(error);
@@ -78,6 +70,67 @@ export default function DashboardPage() {
 
         loadDashboard();
     }, []);
+
+    // 2. Recalcular Estatísticas quando rawData ou selectedND mudar
+    useEffect(() => {
+        if (loading) return;
+
+        const { processos, empenhos, entregas, ncs } = rawData;
+
+        // --- PROCESSOS (Não afetado por ND, ou deveria? Geralmente processo não tem ND única, mas os itens/empenhos sim. Vamos manter global por enquanto) ---
+        const processosAbertos = processos.filter((p: any) =>
+            p.status !== "CONCLUIDO" && p.status !== "CANCELADO" && p.status !== "SUSPENSO"
+        ).length;
+        const processosFinalizados = processos.filter((p: any) => p.status === "CONCLUIDO").length;
+
+        // --- FILTRAGEM POR ND ---
+
+        // NCs: Filtrar créditos específicos
+        let valorNcsRecebidas = 0;
+        let ncsCount = 0; // Contar NCs que tem pelo menos 1 crédito da ND
+
+        ncs.forEach((nc: any) => {
+            const creditosFiltrados = selectedND === "TODAS"
+                ? (nc.creditos || [])
+                : (nc.creditos || []).filter((c: any) => c.nd === selectedND);
+
+            if (creditosFiltrados.length > 0) {
+                ncsCount++;
+                valorNcsRecebidas += creditosFiltrados.reduce((acc: number, c: any) => acc + (parseFloat(c.valor) || 0), 0);
+            }
+        });
+
+        // Empenhos: Filtrar por campo ND
+        const empenhosFiltrados = selectedND === "TODAS"
+            ? empenhos
+            : empenhos.filter((e: any) => e.nd === selectedND);
+
+        const empenhosEmitidos = empenhosFiltrados.length;
+        const valorEmpenhado = empenhosFiltrados.reduce((acc: number, e: any) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
+
+        // Entregas: Filtrar pelo empenho vinculado
+        const entregasFiltradas = selectedND === "TODAS"
+            ? entregas
+            : entregas.filter((ent: any) => {
+                const emp = empenhos.find((e: any) => e.id === ent.id_empenho);
+                return emp && emp.nd === selectedND;
+            });
+
+        const valorRecolhido = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.recolhido) || 0), 0);
+        const valorLiquidado = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.liquidado) || 0), 0);
+
+        setStats({
+            processosAbertos,
+            processosFinalizados,
+            ncsRecebidas: ncsCount,
+            valorNcsRecebidas,
+            empenhosEmitidos,
+            valorEmpenhado,
+            valorRecolhido,
+            valorLiquidado,
+        });
+
+    }, [rawData, selectedND, loading]);
 
     if (loading) {
         return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>;
@@ -188,6 +241,23 @@ export default function DashboardPage() {
                         <CardDescription>Fluxo de recursos e pagamentos</CardDescription>
                     </CardHeader>
                     <CardContent>
+                        <div className="mb-6">
+                            <Select value={selectedND} onValueChange={setSelectedND}>
+                                <SelectTrigger className="w-full bg-slate-950 border-slate-800 text-slate-300">
+                                    <div className="flex items-center gap-2">
+                                        <Filter className="h-4 w-4 text-slate-500" />
+                                        <SelectValue placeholder="Filtrar por Natureza (ND)" />
+                                    </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="TODAS">Todas as Naturezas</SelectItem>
+                                    {availableNDs.map(nd => (
+                                        <SelectItem key={nd} value={nd}>{nd}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
                         <div className="space-y-4">
                             {orcamentoData.map((item, idx) => {
                                 const percent = maxOrcamento > 0 ? (item.value / maxOrcamento) * 100 : 0;

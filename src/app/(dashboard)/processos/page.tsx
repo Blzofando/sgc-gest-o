@@ -195,10 +195,22 @@ export default function ProcessosPage() {
                 const isExpanded = expandedId === proc.id;
 
                 // Dados calculados para o detalhe
-                const valorTotal = proc.valorTotal || 0;
+                // Total Inicial: Soma de (Qtd * Valor Ref) de todos os itens
+                const valorTotal = proc.itens?.reduce((acc, item) => acc + (item.quantidade * item.valorUnitarioRef), 0) || 0;
 
-                // Calcular Total Ganho
-                const totalGanho = proc.itens?.reduce((acc, item) => acc + (item.valorUnitarioRef * item.quantidade), 0) || 0;
+                // Calcular Total Ganho: Soma de (Qtd * Valor Ganho) dos itens vinculados aos fornecedores
+                const totalGanho = fornecedoresList.reduce((acc, f) => {
+                  const vinculo = f.processosVinculados?.find((v: any) => v.processoId === proc.id);
+                  if (!vinculo || !vinculo.itens) return acc;
+
+                  const valorGanhoFornecedor = vinculo.itens.reduce((sum: number, itemGanho: any) => {
+                    const itemOriginal = proc.itens?.find(i => i.id === itemGanho.itemId);
+                    const qtd = itemOriginal ? itemOriginal.quantidade : 0;
+                    return sum + (itemGanho.valorGanho * qtd);
+                  }, 0);
+
+                  return acc + valorGanhoFornecedor;
+                }, 0);
 
                 // Calcular Total Empenhado
                 const empenhosProc = empenhosList.filter(e => e.id_processo === proc.id);
