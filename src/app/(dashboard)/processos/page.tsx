@@ -119,7 +119,7 @@ export default function ProcessosPage() {
   const filteredProcessos = processos.filter(p => {
     const dynamicStatus = getDynamicStatus(p);
     const matchesSearch = p.numero.toLowerCase().includes(busca.toLowerCase()) ||
-      p.descricao?.toLowerCase().includes(busca.toLowerCase());
+      p.objetoResumo?.toLowerCase().includes(busca.toLowerCase());
 
     if (!matchesSearch) return false;
 
@@ -224,7 +224,7 @@ export default function ProcessosPage() {
                   <React.Fragment key={proc.id}>
                     <tr className={`hover:bg-slate-900/50 transition-colors cursor-pointer ${isExpanded ? 'bg-slate-900/80' : ''}`} onClick={() => setExpandedId(isExpanded ? null : proc.id!)}>
                       <td className="px-4 py-3 font-medium text-white">{proc.numero}</td>
-                      <td className="px-4 py-3 max-w-[300px] truncate" title={proc.descricao}>{proc.descricao}</td>
+                      <td className="px-4 py-3 max-w-[300px] truncate" title={proc.objetoResumo}>{proc.objetoResumo}</td>
                       <td className="px-4 py-3">{proc.modalidade}</td>
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded border uppercase font-bold ${dynamicStatus === 'CONCLUIDO' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-900' :

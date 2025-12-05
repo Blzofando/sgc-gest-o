@@ -15,7 +15,7 @@ interface EmpenhoFormProps {
     empenhoId?: string;
 }
 
-const NDS_DISPONIVEIS = ["339030", "339039", "449052"];
+const NDS_DISPONIVEIS = ["339030", "339039", "449052", "339015", "339033"];
 
 export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormProps) {
     const [loading, setLoading] = useState(false);

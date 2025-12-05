@@ -168,13 +168,11 @@ export function NCForm({ onSuccess, initialData, ncId }: NCFormProps) {
                 <SelectValue placeholder="Selecione..." />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="339030">33.90.30 - Material de Consumo</SelectItem>
-                <SelectItem value="339039">33.90.39 - Serv. Terceiros PJ</SelectItem>
-                <SelectItem value="449052">44.90.52 - Equipamentos</SelectItem>
-                <SelectItem value="339014">33.90.14 - Diárias</SelectItem>
-                <SelectItem value="339015">33.90.15 - Passagens</SelectItem>
-                <SelectItem value="339033">33.90.33 - Passagens e Despesas</SelectItem>
-                <SelectItem value="339092">33.90.92 - Despesas Exerc. Ant.</SelectItem>
+                <SelectItem value="339030">33.90.30 - Material Consumível</SelectItem>
+                <SelectItem value="339039">33.90.39 - Serviço</SelectItem>
+                <SelectItem value="449052">44.90.52 - Material permanente</SelectItem>
+                <SelectItem value="339015">33.90.15 - Diárias</SelectItem>
+                <SelectItem value="339033">33.90.33 - Passagens</SelectItem>
               </SelectContent>
             </Select>
           </div>

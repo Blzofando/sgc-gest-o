@@ -34,6 +34,12 @@ export default function FornecedoresPage() {
         try {
             const fSnap = await getDocs(collection(db, "fornecedores"));
             const fList = fSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            // Ordenar por data de cadastro (mais recente primeiro)
+            fList.sort((a: any, b: any) => {
+                const dateA = a.dataCadastro?.toDate?.() || new Date(0);
+                const dateB = b.dataCadastro?.toDate?.() || new Date(0);
+                return dateB.getTime() - dateA.getTime();
+            });
             setFornecedores(fList);
 
             const pSnap = await getDocs(collection(db, "processos"));
