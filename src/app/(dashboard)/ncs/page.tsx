@@ -2,9 +2,11 @@
 
 import { useState, useEffect } from "react";
 import { NCForm } from "@/features/ncs/components/NCForm";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { CreditCard, Plus, Loader2, Search, FileDown, Calendar, DollarSign, Clock, ChevronDown, ChevronUp, Trash2, Pencil, AlertCircle, CheckCircle, Archive, RotateCcw, Building2 } from "lucide-react";
+import { CreditCard, Plus, Calendar, DollarSign, Clock, Trash2, Pencil, Archive, RotateCcw, Building2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { db } from "@/app/lib/firebase";
 import { collection, getDocs, query, orderBy, deleteDoc, doc, updateDoc } from "firebase/firestore";
@@ -14,6 +16,7 @@ import { formatMoney } from "@/app/lib/formatters";
 
 export default function NcsPage() {
   const [ncs, setNcs] = useState<any[]>([]);
+  const [empenhos, setEmpenhos] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
@@ -28,17 +31,28 @@ export default function NcsPage() {
   const [creditDetailsOpen, setCreditDetailsOpen] = useState(false);
   const [selectedCredit, setSelectedCredit] = useState<any>(null);
 
+  // Confirm Dialogs
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [confirmRecolher, setConfirmRecolher] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+  const [confirmReativar, setConfirmReativar] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
+
   const fetchData = async () => {
     setLoading(true);
     try {
       const ncsQuery = query(collection(db, "ncs"), orderBy("dataEmissao", "desc"));
-      const ncsSnap = await getDocs(ncsQuery);
-      const ncsList = ncsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const [ncsSnap, empSnap, entSnap] = await Promise.all([
+        getDocs(ncsQuery),
+        getDocs(collection(db, "empenhos")),
+        getDocs(collection(db, "entregas"))
+      ]);
 
-      const entSnap = await getDocs(collection(db, "entregas"));
-      setEntregas(entSnap.docs.map(d => d.data()));
+      const ncsList = ncsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const empenhosList = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const entregasList = entSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       setNcs(ncsList);
+      setEmpenhos(empenhosList);
+      setEntregas(entregasList);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -46,41 +60,28 @@ export default function NcsPage() {
   useEffect(() => { fetchData() }, []);
 
   const getNCData = (nc: any) => {
-    const totalEmpenhado = nc.totalEmpenhado || 0;
+    // Calcular total empenhado a partir dos empenhos vinculados a esta NC
+    const empenhosDestaNC = empenhos.filter((e: any) => e.id_nc === nc.id);
+    const totalEmpenhado = empenhosDestaNC.reduce((acc: number, e: any) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
 
-    // Calculate Total Liquidado from linked deliveries
-    // We need to find empenhos linked to this NC, but we don't have empenhos list here easily without fetching.
-    // However, the previous logic relied on 'entregas' being fetched.
-    // Let's assume we can filter entregas that might be related if we had empenho info.
-    // Since we don't have empenhos loaded here, we might need to rely on what's stored in NC or fetch empenhos.
-    // Wait, the previous requirement was to fix this. 
-    // If we look at how we did it in EmpenhosPage, we had empenhos.
-    // Here we only have NCs. NCs don't directly link to Entregas. Empenhos link to NCs.
-    // So we need to fetch Empenhos to link NC -> Empenho -> Entrega.
-
-    // For now, let's stick to the existing logic or what was intended.
-    // The previous code snippet I wrote in step 80 tried to use 'entregas' but I might have missed fetching empenhos.
-    // Let's check if I can quickly fetch empenhos or if I should just revert to a simpler calculation if data is missing.
-    // To do it right: Fetch Empenhos too.
-
-    // But wait, I can't change the function signature easily inside this render loop if I don't have the data.
-    // Let's fetch empenhos in fetchData.
-
-    // For this immediate fix, I will correct the syntax errors first.
-    // The syntax error was code outside the component.
-
-    const totalLiquidado = nc.totalLiquidado || 0; // Placeholder if we don't have the complex logic ready in this file yet.
-    // Actually, I should implement the logic I promised.
+    // Calcular total liquidado a partir das entregas dos empenhos vinculados
+    let totalLiquidado = 0;
+    empenhosDestaNC.forEach((emp: any) => {
+      const entregasDoEmpenho = entregas.filter((ent: any) => ent.id_empenho === emp.id);
+      entregasDoEmpenho.forEach((ent: any) => {
+        totalLiquidado += parseFloat(ent.valores?.liquidado) || 0;
+      });
+    });
 
     const valorRecolhido = nc.recolhidoManual ? (nc.valorTotal - totalEmpenhado) : (nc.valorRecolhido || 0);
     const saldoDisponivel = nc.valorTotal - totalEmpenhado - valorRecolhido;
 
     let status = "DISPONIVEL";
     if (nc.recolhidoManual) status = "CONCLUIDO";
-    else if (saldoDisponivel <= 0.01 && totalEmpenhado > 0) status = "EM_UTILIZACAO"; // Simplification
+    else if (saldoDisponivel <= 0.01 && totalEmpenhado > 0) status = "EM_UTILIZACAO";
     else if (saldoDisponivel > 0.01) status = "DISPONIVEL";
 
-    // If fully liquidated?
+    // Se totalmente liquidado
     if (totalLiquidado >= totalEmpenhado && totalEmpenhado > 0 && saldoDisponivel < 1) status = "CONCLUIDO";
 
     return { totalEmpenhado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido: nc.recolhidoManual };
@@ -101,13 +102,17 @@ export default function NcsPage() {
     return true;
   });
 
-  const handleDelete = async (e: React.MouseEvent, id: string) => {
+  const handleDelete = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm("Tem certeza que deseja excluir esta NC?")) return;
+    setConfirmDelete({ open: true, id });
+  };
+
+  const confirmDeleteAction = async () => {
+    if (!confirmDelete.id) return;
     try {
-      await deleteDoc(doc(db, "ncs", id));
+      await deleteDoc(doc(db, "ncs", confirmDelete.id));
       fetchData();
-    } catch (err) { console.error(err); alert("Erro ao excluir."); }
+    } catch (err) { console.error(err); }
   };
 
   const handleEdit = (e: React.MouseEvent, nc: any) => {
@@ -116,20 +121,28 @@ export default function NcsPage() {
     setOpen(true);
   };
 
-  const handleRecolherSaldo = async (id: string) => {
-    if (!confirm("Tem certeza que deseja recolher o saldo restante? Esta ação concluirá a NC.")) return;
-    try {
-      await updateDoc(doc(db, "ncs", id), { recolhidoManual: true });
-      fetchData();
-    } catch (err) { console.error(err); alert("Erro ao recolher saldo."); }
+  const handleRecolherSaldo = (id: string) => {
+    setConfirmRecolher({ open: true, id });
   };
 
-  const handleReativarSaldo = async (id: string) => {
-    if (!confirm("Deseja reativar o saldo desta NC? Ela voltará para o status anterior.")) return;
+  const confirmRecolherAction = async () => {
+    if (!confirmRecolher.id) return;
     try {
-      await updateDoc(doc(db, "ncs", id), { recolhidoManual: false });
+      await updateDoc(doc(db, "ncs", confirmRecolher.id), { recolhidoManual: true });
       fetchData();
-    } catch (err) { console.error(err); alert("Erro ao reativar saldo."); }
+    } catch (err) { console.error(err); }
+  };
+
+  const handleReativarSaldo = (id: string) => {
+    setConfirmReativar({ open: true, id });
+  };
+
+  const confirmReativarAction = async () => {
+    if (!confirmReativar.id) return;
+    try {
+      await updateDoc(doc(db, "ncs", confirmReativar.id), { recolhidoManual: false });
+      fetchData();
+    } catch (err) { console.error(err); }
   };
 
   const handleCreditClick = (credit: any, nc: any) => {
@@ -175,34 +188,31 @@ export default function NcsPage() {
   };
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Notas de Crédito</h1>
-          <p className="text-slate-400">Gestão de Orçamento e Créditos Recebidos.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} className="border-slate-700"><FileDown className="mr-2 h-4 w-4" /> Exportar</Button>
-          <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) setEditingNc(null); }}>
-            <DialogTrigger asChild>
-              <Button className="bg-emerald-600 hover:bg-emerald-500 text-white">
-                <Plus className="mr-2 h-4 w-4" /> Nova NC
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[800px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingNc ? "Editar Nota de Crédito" : "Lançar Nota de Crédito"}</DialogTitle>
-                <DialogDescription>Insira os dados da NC e os créditos recebidos.</DialogDescription>
-              </DialogHeader>
-              <NCForm
-                onSuccess={() => { setOpen(false); fetchData(); setEditingNc(null); }}
-                initialData={editingNc}
-                ncId={editingNc?.id}
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+    <div className="space-y-6 pb-10 animate-in fade-in">
+      <PageHeader
+        title="Notas de Crédito"
+        description="Gestão de Orçamento e Créditos Recebidos."
+        onExport={handleExport}
+      >
+        <Dialog open={open} onOpenChange={(isOpen) => { setOpen(isOpen); if (!isOpen) setEditingNc(null); }}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-500 text-white w-full md:w-auto">
+              <Plus className="mr-2 h-4 w-4" /> Nova NC
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[800px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingNc ? "Editar Nota de Crédito" : "Lançar Nota de Crédito"}</DialogTitle>
+              <DialogDescription>Insira os dados da NC e os créditos recebidos.</DialogDescription>
+            </DialogHeader>
+            <NCForm
+              onSuccess={() => { setOpen(false); fetchData(); setEditingNc(null); }}
+              initialData={editingNc}
+              ncId={editingNc?.id}
+            />
+          </DialogContent>
+        </Dialog>
+      </PageHeader>
 
       <FilterBar
         searchValue={busca}
@@ -218,7 +228,7 @@ export default function NcsPage() {
       />
 
       <div className="grid grid-cols-1 gap-4">
-        {loading ? <div className="p-12 text-center"><Loader2 className="animate-spin inline text-emerald-500" /> Carregando...</div> :
+        {loading ? <LoadingState text="Carregando NCs..." /> :
           ncsFiltradas.length === 0 ? <div className="p-12 text-center text-slate-500">Nenhuma NC encontrada.</div> :
             ncsFiltradas.map((nc) => {
               const { totalEmpenhado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido } = getNCData(nc);
@@ -421,6 +431,36 @@ export default function NcsPage() {
           )}
         </DialogContent>
       </Dialog>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: null })}
+        title="Excluir Nota de Crédito"
+        description="Tem certeza que deseja excluir esta NC? Esta ação não pode ser desfeita."
+        onConfirm={confirmDeleteAction}
+        confirmText="Excluir"
+        variant="danger"
+      />
+
+      <ConfirmDialog
+        open={confirmRecolher.open}
+        onOpenChange={(open) => setConfirmRecolher({ open, id: null })}
+        title="Recolher Saldo"
+        description="Tem certeza que deseja recolher o saldo restante? Esta ação concluirá a NC."
+        onConfirm={confirmRecolherAction}
+        confirmText="Recolher"
+        variant="warning"
+      />
+
+      <ConfirmDialog
+        open={confirmReativar.open}
+        onOpenChange={(open) => setConfirmReativar({ open, id: null })}
+        title="Reativar Saldo"
+        description="Deseja reativar o saldo desta NC? Ela voltará para o status anterior."
+        onConfirm={confirmReativarAction}
+        confirmText="Reativar"
+        variant="default"
+      />
     </div>
   );
 }

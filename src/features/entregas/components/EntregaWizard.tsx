@@ -9,7 +9,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import {
     CheckCircle, Circle, ArrowRight, ArrowLeft, Package, Truck,
-    FileCheck, DollarSign, AlertCircle, Send, Palette, Calendar, Trash2, MailCheck
+    FileCheck, DollarSign, AlertCircle, Send, Palette, Calendar, Trash2, MailCheck,
+    Lock, Check, CalendarPlus
 } from "lucide-react";
 import { formatMoney } from "@/app/lib/formatters";
 import { db } from "@/app/lib/firebase";
@@ -53,6 +54,17 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
     const [prazo, setPrazo] = useState("");
     const [conferido, setConferido] = useState(false);
 
+    // Prazo Lock State
+    const [prazoTravado, setPrazoTravado] = useState(false);
+    const [dataPrazoTravado, setDataPrazoTravado] = useState("");
+    const [historicoProrrogacoes, setHistoricoProrrogacoes] = useState<any[]>([]);
+
+    // Prorrogação Modal State
+    const [showProrrogacao, setShowProrrogacao] = useState(false);
+    const [motivoProrrogacao, setMotivoProrrogacao] = useState("");
+    const [diasProrrogacao, setDiasProrrogacao] = useState<number | null>(null);
+    const [dataProrrogacaoCustom, setDataProrrogacaoCustom] = useState("");
+
     // Debounce Ref for Text Inputs
     const saveTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -82,6 +94,11 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
                 setArteEnviada(data.etapas.arteEnviada || false);
                 setConferido(data.etapas.conferido || false);
             }
+
+            // Load prazo lock state
+            setPrazoTravado(data.prazoTravado || false);
+            setDataPrazoTravado(data.dataPrazoTravado || "");
+            setHistoricoProrrogacoes(data.historicoProrrogacoes || []);
 
             const calculatedStep = determineStepFromData(data);
             setCurrentStep(calculatedStep);
@@ -157,6 +174,9 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
             rastreio: currentValues.codigoRastreio,
             semRastreio: currentValues.semRastreio,
             prazo: currentValues.prazo ? new Date(currentValues.prazo).toISOString() : null,
+            prazoTravado: currentValues.prazoTravado ?? prazoTravado,
+            dataPrazoTravado: currentValues.dataPrazoTravado ?? dataPrazoTravado,
+            historicoProrrogacoes: currentValues.historicoProrrogacoes ?? historicoProrrogacoes,
             dataAtualizacao: new Date()
         };
 
@@ -173,6 +193,66 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
         } catch (error) {
             console.error("Auto-save error:", error);
         }
+    };
+
+    // Handle locking the deadline
+    const handleTravarPrazo = async () => {
+        if (!prazo) return;
+
+        const now = new Date().toISOString();
+        setPrazoTravado(true);
+        setDataPrazoTravado(now);
+
+        await autoSave({
+            prazoTravado: true,
+            dataPrazoTravado: now
+        });
+    };
+
+    // Handle deadline extension
+    const handleProrrogacao = async () => {
+        if (!motivoProrrogacao.trim()) return;
+
+        let novoPrazo = "";
+        let dias = 0;
+
+        if (diasProrrogacao) {
+            // Quick option: +5, +15, +30
+            const d = new Date(prazo);
+            d.setDate(d.getDate() + diasProrrogacao);
+            novoPrazo = d.toISOString().split('T')[0];
+            dias = diasProrrogacao;
+        } else if (dataProrrogacaoCustom) {
+            // Custom date
+            novoPrazo = dataProrrogacaoCustom;
+            const original = new Date(prazo);
+            const custom = new Date(dataProrrogacaoCustom);
+            dias = Math.ceil((custom.getTime() - original.getTime()) / (1000 * 60 * 60 * 24));
+        }
+
+        if (!novoPrazo) return;
+
+        const novoRegistro = {
+            dataProrrogacao: new Date().toISOString(),
+            prazoAnterior: prazo,
+            prazoNovo: novoPrazo,
+            diasAdicionados: dias,
+            motivo: motivoProrrogacao.trim()
+        };
+
+        const novoHistorico = [...historicoProrrogacoes, novoRegistro];
+
+        setPrazo(novoPrazo);
+        setHistoricoProrrogacoes(novoHistorico);
+        setShowProrrogacao(false);
+        setMotivoProrrogacao("");
+        setDiasProrrogacao(null);
+        setDataProrrogacaoCustom("");
+
+        await autoSave({
+            prazo: novoPrazo,
+            historicoProrrogacoes: novoHistorico
+        });
     };
 
     const handleNext = async () => {
@@ -579,21 +659,140 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
                                 <div className="flex justify-between items-center">
                                     <Label className="text-slate-400">Prazo de Entrega</Label>
                                     <span className="text-xs text-slate-500">
-                                        {prazo ? "Calculado automaticamente" : "Defina uma data limite"}
+                                        {prazoTravado ? "✓ Confirmado" : prazo ? "Calculado automaticamente" : "Defina uma data limite"}
                                     </span>
                                 </div>
-                                <div className="relative">
-                                    <Calendar className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
-                                    <Input
-                                        type="date"
-                                        value={prazo}
-                                        onChange={e => {
-                                            setPrazo(e.target.value);
-                                            autoSave({ prazo: e.target.value });
-                                        }}
-                                        className="bg-slate-950 border-slate-700 pl-10 h-10 text-slate-300"
-                                    />
+                                <div className="flex gap-2">
+                                    <div className="relative flex-1">
+                                        <Calendar className="absolute left-3 top-3 h-5 w-5 text-slate-500" />
+                                        <Input
+                                            type="date"
+                                            value={prazo}
+                                            onChange={e => {
+                                                if (!prazoTravado) {
+                                                    setPrazo(e.target.value);
+                                                    autoSave({ prazo: e.target.value });
+                                                }
+                                            }}
+                                            className="bg-slate-950 border-slate-700 pl-10 h-10 text-slate-300"
+                                            disabled={prazoTravado}
+                                        />
+                                    </div>
+                                    {prazo && !prazoTravado && (
+                                        <Button
+                                            onClick={handleTravarPrazo}
+                                            className="bg-emerald-600 hover:bg-emerald-500 h-10 px-4"
+                                        >
+                                            <Check className="w-4 h-4 mr-1" /> OK
+                                        </Button>
+                                    )}
+                                    {prazoTravado && (
+                                        <div className="flex items-center px-3 bg-emerald-900/20 border border-emerald-500/30 rounded h-10">
+                                            <Lock className="w-4 h-4 text-emerald-400" />
+                                        </div>
+                                    )}
                                 </div>
+
+                                {/* Seção de Prorrogação - só aparece quando travado */}
+                                {prazoTravado && (
+                                    <div className="mt-4 animate-in fade-in slide-in-from-top-2">
+                                        {!showProrrogacao ? (
+                                            <Button
+                                                variant="outline"
+                                                onClick={() => setShowProrrogacao(true)}
+                                                className="w-full border-orange-500/50 text-orange-400 hover:bg-orange-500/10"
+                                            >
+                                                <CalendarPlus className="w-4 h-4 mr-2" /> Prorrogar Prazo
+                                            </Button>
+                                        ) : (
+                                            <div className="bg-slate-900/50 border border-slate-800 rounded-lg p-4 space-y-4">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-sm font-bold text-slate-300">Prorrogar Prazo</span>
+                                                    <button onClick={() => {
+                                                        setShowProrrogacao(false);
+                                                        setMotivoProrrogacao("");
+                                                        setDiasProrrogacao(null);
+                                                        setDataProrrogacaoCustom("");
+                                                    }} className="text-slate-500 hover:text-slate-300">✕</button>
+                                                </div>
+
+                                                {/* Quick options */}
+                                                <div className="flex gap-2">
+                                                    {[5, 15, 30].map((dias) => (
+                                                        <button
+                                                            key={dias}
+                                                            onClick={() => {
+                                                                setDiasProrrogacao(dias);
+                                                                setDataProrrogacaoCustom("");
+                                                            }}
+                                                            className={cn(
+                                                                "flex-1 py-2 px-3 rounded border text-sm font-bold transition-all",
+                                                                diasProrrogacao === dias
+                                                                    ? "border-orange-500 bg-orange-500/20 text-orange-400"
+                                                                    : "border-slate-700 text-slate-400 hover:border-slate-600"
+                                                            )}
+                                                        >
+                                                            +{dias}
+                                                        </button>
+                                                    ))}
+                                                    <div className="relative flex-1">
+                                                        <CalendarPlus className="absolute left-2 top-2.5 h-4 w-4 text-slate-500" />
+                                                        <input
+                                                            type="date"
+                                                            value={dataProrrogacaoCustom}
+                                                            onChange={(e) => {
+                                                                setDataProrrogacaoCustom(e.target.value);
+                                                                setDiasProrrogacao(null);
+                                                            }}
+                                                            className={cn(
+                                                                "w-full py-2 pl-8 pr-2 rounded border text-sm bg-transparent transition-all",
+                                                                dataProrrogacaoCustom
+                                                                    ? "border-orange-500 text-orange-400"
+                                                                    : "border-slate-700 text-slate-400"
+                                                            )}
+                                                            min={prazo}
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {/* Motivo obrigatório */}
+                                                <div className="space-y-1">
+                                                    <Label className="text-xs text-slate-500">Motivo *</Label>
+                                                    <Textarea
+                                                        value={motivoProrrogacao}
+                                                        onChange={(e) => setMotivoProrrogacao(e.target.value)}
+                                                        placeholder="Descreva o motivo da prorrogação..."
+                                                        className="bg-slate-950 border-slate-700 text-sm resize-none h-16"
+                                                    />
+                                                </div>
+
+                                                {/* Confirmar */}
+                                                <Button
+                                                    onClick={handleProrrogacao}
+                                                    disabled={!motivoProrrogacao.trim() || (!diasProrrogacao && !dataProrrogacaoCustom)}
+                                                    className="w-full bg-orange-600 hover:bg-orange-500 disabled:opacity-50"
+                                                >
+                                                    Confirmar Prorrogação
+                                                </Button>
+
+                                                {/* Histórico de prorrogações */}
+                                                {historicoProrrogacoes.length > 0 && (
+                                                    <div className="pt-3 border-t border-slate-800">
+                                                        <span className="text-[10px] uppercase tracking-wider text-slate-600">Histórico ({historicoProrrogacoes.length})</span>
+                                                        <div className="mt-2 space-y-1 max-h-20 overflow-y-auto">
+                                                            {historicoProrrogacoes.map((h, idx) => (
+                                                                <div key={idx} className="text-[11px] text-slate-500 flex justify-between">
+                                                                    <span>+{h.diasAdicionados} dias</span>
+                                                                    <span className="truncate max-w-[150px]" title={h.motivo}>{h.motivo}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
                     </div>

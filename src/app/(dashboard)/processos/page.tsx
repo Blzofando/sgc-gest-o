@@ -4,11 +4,13 @@ import React, { useState, useEffect } from "react";
 import { ProcessoForm } from "@/features/processos/components/ProcessoForm";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Plus, Loader2, Edit, Trash2, ChevronDown, ChevronUp, Box, Layers, AlertCircle, Wallet, CheckCircle, Package } from "lucide-react";
+import { Plus, Edit, Trash2, ChevronDown, ChevronUp, Box, Layers, Wallet, Package } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { db } from "@/app/lib/firebase";
-import { collection, getDocs, query, orderBy, deleteDoc, doc } from "firebase/firestore";
+import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { Processo } from "@/types";
 import { exportToExcel } from "@/app/lib/excel";
 import { formatMoney } from "@/app/lib/formatters";
@@ -24,6 +26,7 @@ export default function ProcessosPage() {
   const [busca, setBusca] = useState("");
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [viewingItemsId, setViewingItemsId] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
   // Filtros atualizados
   const [statusFilter, setStatusFilter] = useState<"ATIVOS" | "CONCLUIDOS" | "TODOS">("ATIVOS");
@@ -94,14 +97,17 @@ export default function ProcessosPage() {
     return "EM_ANDAMENTO";
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Tem certeza que deseja excluir este processo?")) return;
+  const handleDelete = (id: string) => {
+    setConfirmDelete({ open: true, id });
+  };
+
+  const confirmDeleteAction = async () => {
+    if (!confirmDelete.id) return;
     try {
-      await deleteDoc(doc(db, "processos", id));
+      await deleteDoc(doc(db, "processos", confirmDelete.id));
       loadData();
     } catch (error) {
       console.error("Erro ao excluir:", error);
-      alert("Erro ao excluir processo.");
     }
   };
 
@@ -130,34 +136,31 @@ export default function ProcessosPage() {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold text-white">Processos</h1>
-          <p className="text-slate-400">Gestão de Processos de Compra e Contratação.</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => exportToExcel(filteredProcessos, "Processos")} className="border-slate-700"><Layers className="mr-2 h-4 w-4" /> Exportar</Button>
-          <Dialog open={open} onOpenChange={(isOpen) => {
-            setOpen(isOpen);
-            if (!isOpen) handleCloseDialog();
-          }}>
-            <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-500 text-white"><Plus className="mr-2 h-4 w-4" /> Novo Processo</Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[900px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>{editingProcess ? "Editar Processo" : "Novo Processo"}</DialogTitle>
-                <DialogDescription>Preencha os dados do processo.</DialogDescription>
-              </DialogHeader>
-              <ProcessoForm
-                onSuccess={() => { handleCloseDialog(); loadData(); }}
-                dataToEdit={editingProcess}
-              />
-            </DialogContent>
-          </Dialog>
-        </div>
-      </div>
+    <div className="space-y-6 pb-10 animate-in fade-in">
+      <PageHeader
+        title="Processos"
+        description="Gestão de Processos de Compra e Contratação."
+        onExport={() => exportToExcel(filteredProcessos, "Processos")}
+      >
+        <Dialog open={open} onOpenChange={(isOpen) => {
+          setOpen(isOpen);
+          if (!isOpen) handleCloseDialog();
+        }}>
+          <DialogTrigger asChild>
+            <Button className="bg-blue-600 hover:bg-blue-500 text-white w-full md:w-auto"><Plus className="mr-2 h-4 w-4" /> Novo Processo</Button>
+          </DialogTrigger>
+          <DialogContent className="sm:max-w-[900px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>{editingProcess ? "Editar Processo" : "Novo Processo"}</DialogTitle>
+              <DialogDescription>Preencha os dados do processo.</DialogDescription>
+            </DialogHeader>
+            <ProcessoForm
+              onSuccess={() => { handleCloseDialog(); loadData(); }}
+              dataToEdit={editingProcess}
+            />
+          </DialogContent>
+        </Dialog>
+      </PageHeader>
 
       <FilterBar
         searchValue={busca}
@@ -174,7 +177,7 @@ export default function ProcessosPage() {
 
       <div className="rounded-md border border-slate-800 overflow-hidden">
         {loading ? (
-          <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-blue-500" /></div>
+          <LoadingState text="Carregando processos..." />
         ) : filteredProcessos.length === 0 ? (
           <div className="p-12 text-center text-slate-500">Nenhum processo encontrado.</div>
         ) : (
@@ -215,6 +218,14 @@ export default function ProcessosPage() {
                 // Calcular Total Empenhado
                 const empenhosProc = empenhosList.filter(e => e.id_processo === proc.id);
                 const totalEmpenhado = empenhosProc.reduce((acc, e) => acc + (e.valorEmpenhado || 0), 0);
+
+                // Calcular Total Liquidado (soma dos valores liquidados das entregas dos empenhos)
+                const totalLiquidado = empenhosProc.reduce((acc, emp) => {
+                  const entregasDoEmpenho = entregasList.filter((ent: any) => ent.id_empenho === emp.id);
+                  const liquidadoEmpenho = entregasDoEmpenho.reduce((sum: number, ent: any) =>
+                    sum + (parseFloat(ent.valores?.liquidado) || 0), 0);
+                  return acc + liquidadoEmpenho;
+                }, 0);
 
                 // Contadores
                 const qtdEmpresas = fornecedoresList.filter(f => f.processosVinculados?.some((v: any) => v.processoId === proc.id)).length;
@@ -303,7 +314,7 @@ export default function ProcessosPage() {
                                 </div>
                                 <div className="bg-slate-900/50 p-4 rounded border border-slate-800">
                                   <p className="text-xs text-slate-500 uppercase font-bold mb-1">Total Liquidado</p>
-                                  <p className="text-xl font-bold text-purple-400">{formatMoney(0)}</p>
+                                  <p className="text-xl font-bold text-purple-400">{formatMoney(totalLiquidado)}</p>
                                 </div>
                               </div>
 
@@ -367,6 +378,16 @@ export default function ProcessosPage() {
           </table>
         )}
       </div>
+
+      <ConfirmDialog
+        open={confirmDelete.open}
+        onOpenChange={(open) => setConfirmDelete({ open, id: null })}
+        title="Excluir Processo"
+        description="Tem certeza que deseja excluir este processo? Esta ação não pode ser desfeita."
+        onConfirm={confirmDeleteAction}
+        confirmText="Excluir"
+        variant="danger"
+      />
     </div>
   );
 }

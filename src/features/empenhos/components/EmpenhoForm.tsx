@@ -248,6 +248,13 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
     );
 
     const ncsFiltradas = listas.ncs.filter((n: any) => {
+        // IMPORTANTE: Excluir NCs que já foram recolhidas (marcadas como concluídas manualmente)
+        if (n.recolhidoManual) {
+            // Se estiver editando e for a mesma NC, permite aparecer (para poder visualizar o empenho existente)
+            const isSameNC = initialData && initialData.id_nc === n.id;
+            if (!isSameNC) return false;
+        }
+
         // Filtra por ND (se preenchida)
         const matchND = nd ? n.creditos?.some((c: any) => c.nd.includes(nd)) || n.nd?.includes(nd) : true;
 

@@ -11,15 +11,20 @@ interface EntregaCardProps {
     onViewItems: (data: any) => void;
 }
 
-export function EntregaCard({ data, type, onAction, onViewItems }: EntregaCardProps) {
+export function EntregaCard({ data, type, onAction, onViewItems, customValue }: EntregaCardProps & { customValue?: number }) {
     const isEmpenho = type === 'EMPENHO';
 
     // Se for Empenho, usa dados do empenho. Se for Entrega, usa dados da entrega.
     const numero = isEmpenho ? data.numero : data.empenhoNumero;
     const fornecedor = isEmpenho ? data.fornecedorNome : data.fornecedorNome; // Assumindo que vamos denormalizar ou buscar
-    const valor = isEmpenho
-        ? data.valorEmpenhado
-        : (data.valores?.liquidado || data.itens?.reduce((acc: number, item: any) => acc + (item.valorGanho * (item.quantidadeSolicitada || item.quantidade || 0)), 0) || 0);
+
+    // Valor priority: customValue > data.valorEmpenhado (if empenho) > calculated (if entrega)
+    const valor = customValue !== undefined
+        ? customValue
+        : isEmpenho
+            ? data.valorEmpenhado
+            : (data.valores?.liquidado || data.itens?.reduce((acc: number, item: any) => acc + (item.valorGanho * (item.quantidadeSolicitada || item.quantidade || 0)), 0) || 0);
+
     const status = isEmpenho ? "Aguardando Início" : data.status;
 
     // Status Colors & Labels
@@ -65,11 +70,14 @@ export function EntregaCard({ data, type, onAction, onViewItems }: EntregaCardPr
     const MainIcon = isService ? FileCheck : Package;
 
     return (
-        <Card className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all">
+        <Card
+            className="bg-slate-900 border-slate-800 hover:border-slate-700 transition-all cursor-pointer group"
+            onClick={() => onViewItems(data)}
+        >
             <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
                     <div>
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-white flex items-center gap-2 group-hover:text-blue-400 transition-colors">
                             <MainIcon className="h-5 w-5 text-emerald-500" />
                             {numero}
                         </h3>
@@ -96,13 +104,19 @@ export function EntregaCard({ data, type, onAction, onViewItems }: EntregaCardPr
                 </div>
             </CardContent>
             <CardFooter className="pt-2 flex justify-between gap-2">
-                <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white" onClick={() => onViewItems(data)}>
+                <Button variant="ghost" size="sm" className="text-slate-400 hover:text-white" onClick={(e) => {
+                    e.stopPropagation();
+                    onViewItems(data);
+                }}>
                     <Eye className="h-4 w-4 mr-2" /> Itens
                 </Button>
                 <Button
                     size="sm"
                     className={isEmpenho ? "bg-emerald-600 hover:bg-emerald-500" : "bg-blue-600 hover:bg-blue-500"}
-                    onClick={() => onAction(data)}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onAction(data);
+                    }}
                 >
                     {isEmpenho ? <><Play className="h-4 w-4 mr-2" /> Iniciar</> : <><ArrowRight className="h-4 w-4 mr-2" /> Avançar</>}
                 </Button>

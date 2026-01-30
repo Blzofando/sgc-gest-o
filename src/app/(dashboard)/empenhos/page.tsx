@@ -1,10 +1,12 @@
 "use client";
 import { useState, useEffect } from "react";
 import { EmpenhoForm } from "@/features/empenhos/components/EmpenhoForm";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Wallet, Plus, Link as LinkIcon, Search, FileDown, Loader2, Calendar, DollarSign, Building2, FileText, ChevronDown, ChevronUp, Trash2, Pencil, Phone, Mail, CreditCard } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Wallet, Plus, Link as LinkIcon, DollarSign, Building2, FileText, Trash2, Pencil, Phone, Mail, CreditCard } from "lucide-react";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import Link from "next/link";
 import { db } from "@/app/lib/firebase";
 import { collection, getDocs, query, orderBy, deleteDoc, doc } from "firebase/firestore";
@@ -23,6 +25,7 @@ export default function EmpenhosPage() {
 
     // Edit State
     const [editingEmpenho, setEditingEmpenho] = useState<any>(null);
+    const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
 
     // Precisamos buscar Empenhos + Nomes dos Processos e Fornecedores para exibir na tabela
     const fetchEmpenhos = async () => {
@@ -101,13 +104,17 @@ export default function EmpenhosPage() {
         exportToExcel(dados, "Relatorio_Empenhos");
     };
 
-    const handleDelete = async (e: React.MouseEvent, id: string) => {
+    const handleDelete = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (!confirm("Tem certeza que deseja excluir este empenho?")) return;
+        setConfirmDelete({ open: true, id });
+    };
+
+    const confirmDeleteAction = async () => {
+        if (!confirmDelete.id) return;
         try {
-            await deleteDoc(doc(db, "empenhos", id));
+            await deleteDoc(doc(db, "empenhos", confirmDelete.id));
             fetchEmpenhos();
-        } catch (err) { console.error(err); alert("Erro ao excluir."); }
+        } catch (err) { console.error(err); }
     };
 
     const handleEdit = (e: React.MouseEvent, empenho: any) => {
@@ -122,40 +129,37 @@ export default function EmpenhosPage() {
     };
 
     return (
-        <div className="space-y-6 animate-in fade-in">
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-white">Empenhos</h1>
-                    <p className="text-slate-400">Controle de emissão de Notas de Empenho.</p>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" onClick={handleExport} className="border-slate-700"><FileDown className="mr-2 h-4 w-4" /> Exportar</Button>
-                    <Dialog open={open} onOpenChange={(isOpen) => {
-                        setOpen(isOpen);
-                        if (!isOpen) handleCloseDialog();
-                    }}>
-                        <DialogTrigger asChild>
-                            <Button className="bg-blue-600 hover:bg-blue-500 text-white"><Plus className="mr-2 h-4 w-4" /> Novo Empenho</Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-[800px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
-                            <div className="flex justify-between mb-4 items-center">
-                                <div>
-                                    <DialogTitle>{editingEmpenho ? "Editar Nota de Empenho" : "Emitir Nota de Empenho"}</DialogTitle>
-                                    <DialogDescription>{editingEmpenho ? "Atualize os dados da NE." : "Preencha os dados para gerar uma nova NE."}</DialogDescription>
-                                </div>
-                                <Link href="/ncs" className="text-xs text-blue-400 flex items-center hover:underline bg-blue-900/20 px-2 py-1 rounded border border-blue-900">
-                                    Faltou a NC? <LinkIcon className="ml-1 h-3 w-3" />
-                                </Link>
+        <div className="space-y-6 pb-10 animate-in fade-in">
+            <PageHeader
+                title="Empenhos"
+                description="Controle de emissão de Notas de Empenho."
+                onExport={handleExport}
+            >
+                <Dialog open={open} onOpenChange={(isOpen) => {
+                    setOpen(isOpen);
+                    if (!isOpen) handleCloseDialog();
+                }}>
+                    <DialogTrigger asChild>
+                        <Button className="bg-blue-600 hover:bg-blue-500 text-white w-full md:w-auto"><Plus className="mr-2 h-4 w-4" /> Novo Empenho</Button>
+                    </DialogTrigger>
+                    <DialogContent className="sm:max-w-[800px] bg-slate-950 border-slate-800 text-slate-100 max-h-[90vh] overflow-y-auto">
+                        <div className="flex justify-between mb-4 items-center">
+                            <div>
+                                <DialogTitle>{editingEmpenho ? "Editar Nota de Empenho" : "Emitir Nota de Empenho"}</DialogTitle>
+                                <DialogDescription>{editingEmpenho ? "Atualize os dados da NE." : "Preencha os dados para gerar uma nova NE."}</DialogDescription>
                             </div>
-                            <EmpenhoForm
-                                onSuccess={() => { handleCloseDialog(); fetchEmpenhos(); }}
-                                initialData={editingEmpenho}
-                                empenhoId={editingEmpenho?.id}
-                            />
-                        </DialogContent>
-                    </Dialog>
-                </div>
-            </div>
+                            <Link href="/ncs" className="text-xs text-blue-400 flex items-center hover:underline bg-blue-900/20 px-2 py-1 rounded border border-blue-900">
+                                Faltou a NC? <LinkIcon className="ml-1 h-3 w-3" />
+                            </Link>
+                        </div>
+                        <EmpenhoForm
+                            onSuccess={() => { handleCloseDialog(); fetchEmpenhos(); }}
+                            initialData={editingEmpenho}
+                            empenhoId={editingEmpenho?.id}
+                        />
+                    </DialogContent>
+                </Dialog>
+            </PageHeader>
 
             {/* Filtro */}
             <FilterBar
@@ -173,7 +177,7 @@ export default function EmpenhosPage() {
 
             {/* Lista de Cards */}
             <div className="grid grid-cols-1 gap-4">
-                {loading ? <div className="p-12 flex justify-center"><Loader2 className="animate-spin text-blue-500" /></div> :
+                {loading ? <LoadingState text="Carregando empenhos..." /> :
                     empenhosFiltrados.length === 0 ? <div className="p-12 text-center text-slate-500">Nenhum empenho encontrado.</div> :
                         empenhosFiltrados.map(e => {
                             // Dynamic Status Calculation
@@ -332,6 +336,16 @@ export default function EmpenhosPage() {
                         })
                 }
             </div>
+
+            <ConfirmDialog
+                open={confirmDelete.open}
+                onOpenChange={(open) => setConfirmDelete({ open, id: null })}
+                title="Excluir Empenho"
+                description="Tem certeza que deseja excluir este empenho? Esta ação não pode ser desfeita."
+                onConfirm={confirmDeleteAction}
+                confirmText="Excluir"
+                variant="danger"
+            />
         </div>
     );
 }

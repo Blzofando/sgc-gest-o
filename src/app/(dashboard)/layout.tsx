@@ -12,7 +12,6 @@ import {
   PackageCheck,
   Settings,
   LogOut,
-  Bell,
   Search,
   Users,
   CreditCard
@@ -20,6 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { NotificationBellWrapper } from "@/features/notificacoes/components";
 
 export default function DashboardLayout({
   children,
@@ -38,8 +38,8 @@ export default function DashboardLayout({
   const getLinkClass = (path: string) => {
     const isActive = pathname === path;
     return `w-full justify-start gap-3 transition-all ${isActive
-        ? "bg-blue-600/10 text-blue-400 border-r-2 border-blue-500 rounded-r-none"
-        : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
+      ? "bg-blue-600/10 text-blue-400 border-r-2 border-blue-500 rounded-r-none"
+      : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
       }`;
   };
 
@@ -125,10 +125,7 @@ export default function DashboardLayout({
           </div>
 
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-white relative hover:bg-slate-800 rounded-full">
-              <Bell className="h-5 w-5" />
-              <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full animate-pulse"></span>
-            </Button>
+            <NotificationBellWrapper />
             <div className="flex items-center gap-3 border-l border-slate-800 pl-4">
               <div className="text-right hidden sm:block">
                 <p className="text-sm font-medium text-white">Admin</p>

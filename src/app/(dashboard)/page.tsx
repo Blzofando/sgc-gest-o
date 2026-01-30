@@ -5,6 +5,8 @@ import { db } from "@/app/lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { formatMoney } from "@/app/lib/formatters";
 import { motion } from "framer-motion";
+import { PageHeader } from "@/components/shared/PageHeader";
+import { LoadingState } from "@/components/shared/LoadingState";
 import {
     FileText, CheckCircle, AlertCircle, DollarSign,
     Wallet, TrendingUp, Package, Filter
@@ -28,10 +30,15 @@ export default function DashboardPage() {
     const [stats, setStats] = useState({
         processosAbertos: 0,
         processosFinalizados: 0,
-        ncsRecebidas: 0,
+        // NCs breakdown
+        ncsTotal: 0,
+        ncsAtivas: 0,
+        ncsConcluidas: 0,
         valorNcsRecebidas: 0,
+        // Empenhos
         empenhosEmitidos: 0,
         valorEmpenhado: 0,
+        // Valores de execução
         valorRecolhido: 0,
         valorLiquidado: 0,
     });
@@ -77,28 +84,44 @@ export default function DashboardPage() {
 
         const { processos, empenhos, entregas, ncs } = rawData;
 
-        // --- PROCESSOS (Não afetado por ND, ou deveria? Geralmente processo não tem ND única, mas os itens/empenhos sim. Vamos manter global por enquanto) ---
-        const processosAbertos = processos.filter((p: any) =>
-            p.status !== "CONCLUIDO" && p.status !== "CANCELADO" && p.status !== "SUSPENSO"
-        ).length;
-        const processosFinalizados = processos.filter((p: any) => p.status === "CONCLUIDO").length;
+        // --- PROCESSOS (Calcular status dinâmico baseado em entregas) ---
+        // Função para calcular status dinâmico de um processo
+        const getDynamicStatus = (p: any) => {
+            if (p.status === "CANCELADO" || p.status === "SUSPENSO") return p.status;
 
-        // --- FILTRAGEM POR ND ---
+            // Verificar se tem empenhos vinculados
+            const empenhosDoProcesso = empenhos.filter((e: any) => e.id_processo === p.id);
+            if (empenhosDoProcesso.length === 0) return p.status; // Mantém status original se não tem empenho
 
-        // NCs: Filtrar créditos específicos
-        let valorNcsRecebidas = 0;
-        let ncsCount = 0; // Contar NCs que tem pelo menos 1 crédito da ND
+            // Verificar entregas dos empenhos
+            const entregasDoProcesso = entregas.filter((ent: any) =>
+                empenhosDoProcesso.some((emp: any) => emp.id === ent.id_empenho)
+            );
 
-        ncs.forEach((nc: any) => {
-            const creditosFiltrados = selectedND === "TODAS"
-                ? (nc.creditos || [])
-                : (nc.creditos || []).filter((c: any) => c.nd === selectedND);
+            if (entregasDoProcesso.length === 0) return p.status;
 
-            if (creditosFiltrados.length > 0) {
-                ncsCount++;
-                valorNcsRecebidas += creditosFiltrados.reduce((acc: number, c: any) => acc + (parseFloat(c.valor) || 0), 0);
+            // Se todas as entregas estiverem concluídas/liquidadas
+            const todosConcluidos = entregasDoProcesso.every((ent: any) =>
+                ent.status === "LIQUIDADO" || ent.status === "ENTREGUE" || ent.status === "CONCLUIDO"
+            );
+            if (todosConcluidos && entregasDoProcesso.length > 0) return "CONCLUIDO";
+
+            return p.status;
+        };
+
+        // Contar processos usando status dinâmico
+        let processosAbertos = 0;
+        let processosFinalizados = 0;
+        processos.forEach((p: any) => {
+            const status = getDynamicStatus(p);
+            if (status === "CONCLUIDO") {
+                processosFinalizados++;
+            } else if (status !== "CANCELADO" && status !== "SUSPENSO") {
+                processosAbertos++;
             }
         });
+
+        // --- FILTRAGEM POR ND ---
 
         // Empenhos: Filtrar por campo ND
         const empenhosFiltrados = selectedND === "TODAS"
@@ -116,13 +139,95 @@ export default function DashboardPage() {
                 return emp && emp.nd === selectedND;
             });
 
-        const valorRecolhido = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.recolhido) || 0), 0);
+        // NCs: Calcular valores com base na lógica de status
+        let valorNcsRecebidas = 0;
+        let ncsTotal = 0;
+        let ncsAtivas = 0;
+        let ncsConcluidas = 0;
+
+        // Criar um mapa de empenhos por NC (usando id_nc, não ncNumero)
+        const empenhosPorNcId = new Map<string, number>();
+        empenhosFiltrados.forEach((emp: any) => {
+            if (emp.id_nc) {
+                const current = empenhosPorNcId.get(emp.id_nc) || 0;
+                empenhosPorNcId.set(emp.id_nc, current + (parseFloat(emp.valorEmpenhado) || 0));
+            }
+        });
+
+        // Criar mapa de liquidado/recolhido por empenho
+        const liquidadoPorEmpenho = new Map<string, number>();
+        const recolhidoPorEmpenho = new Map<string, number>();
+        entregasFiltradas.forEach((ent: any) => {
+            const empId = ent.id_empenho;
+            if (empId) {
+                liquidadoPorEmpenho.set(empId, (liquidadoPorEmpenho.get(empId) || 0) + (parseFloat(ent.valores?.liquidado) || 0));
+                recolhidoPorEmpenho.set(empId, (recolhidoPorEmpenho.get(empId) || 0) + (parseFloat(ent.valores?.recolhido) || 0));
+            }
+        });
+
+        // Calcular por NC
+        ncs.forEach((nc: any) => {
+            const creditosFiltrados = selectedND === "TODAS"
+                ? (nc.creditos || [])
+                : (nc.creditos || []).filter((c: any) => c.nd === selectedND);
+
+            if (creditosFiltrados.length > 0) {
+                ncsTotal++;
+                const valorNC = creditosFiltrados.reduce((acc: number, c: any) => acc + (parseFloat(c.valor) || 0), 0);
+                valorNcsRecebidas += valorNC;
+
+                // Calcular status da NC usando id da NC
+                const totalEmpenhadoNC = empenhosPorNcId.get(nc.id) || 0;
+                const valorRecolhidoNC = nc.recolhidoManual
+                    ? (nc.valorTotal - totalEmpenhadoNC)
+                    : (nc.valorRecolhido || 0);
+                const saldoDisponivel = nc.valorTotal - totalEmpenhadoNC - valorRecolhidoNC;
+
+                // Calcular liquidado da NC através dos empenhos vinculados (usando id_nc)
+                let totalLiquidadoNC = 0;
+                empenhosFiltrados.filter((e: any) => e.id_nc === nc.id).forEach((emp: any) => {
+                    totalLiquidadoNC += liquidadoPorEmpenho.get(emp.id) || 0;
+                });
+
+                // Determinar se está concluída
+                const isConcluido = nc.recolhidoManual ||
+                    (totalLiquidadoNC >= totalEmpenhadoNC && totalEmpenhadoNC > 0 && saldoDisponivel < 1);
+
+                if (isConcluido) {
+                    ncsConcluidas++;
+                } else {
+                    ncsAtivas++;
+                }
+            }
+        });
+
+        // Total Liquidado das entregas
         const valorLiquidado = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.liquidado) || 0), 0);
+
+        // Total Recolhido das NCs (soma dos valorRecolhido de NCs que foram recolhidas manualmente)
+        let valorRecolhido = 0;
+        ncs.forEach((nc: any) => {
+            const creditosFiltrados = selectedND === "TODAS"
+                ? (nc.creditos || [])
+                : (nc.creditos || []).filter((c: any) => c.nd === selectedND);
+
+            if (creditosFiltrados.length > 0) {
+                // Usar valorRecolhido salvo na NC ou calcular baseado em recolhidoManual
+                if (nc.recolhidoManual) {
+                    const totalEmpenhadoNC = empenhosPorNcId.get(nc.id) || 0;
+                    valorRecolhido += (parseFloat(nc.valorTotal) || 0) - totalEmpenhadoNC;
+                } else if (nc.valorRecolhido) {
+                    valorRecolhido += parseFloat(nc.valorRecolhido) || 0;
+                }
+            }
+        });
 
         setStats({
             processosAbertos,
             processosFinalizados,
-            ncsRecebidas: ncsCount,
+            ncsTotal,
+            ncsAtivas,
+            ncsConcluidas,
             valorNcsRecebidas,
             empenhosEmitidos,
             valorEmpenhado,
@@ -133,7 +238,7 @@ export default function DashboardPage() {
     }, [rawData, selectedND, loading]);
 
     if (loading) {
-        return <div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div></div>;
+        return <LoadingState text="Carregando dashboard..." className="h-[50vh]" />;
     }
 
     const totalProcessos = stats.processosAbertos + stats.processosFinalizados;
@@ -155,14 +260,12 @@ export default function DashboardPage() {
     const maxOrcamento = Math.max(...orcamentoData.map(d => d.value));
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500">
+        <div className="space-y-8 pb-10 animate-in fade-in duration-500">
             {/* Header */}
-            <div className="flex justify-between items-center">
-                <div>
-                    <h1 className="text-3xl font-bold text-white tracking-tight">Dashboard Geral</h1>
-                    <p className="text-slate-400">Visão clara e intuitiva dos processos e orçamento.</p>
-                </div>
-            </div>
+            <PageHeader
+                title="Dashboard Geral"
+                description="Visão clara e intuitiva dos processos e orçamento."
+            />
 
             {/* Cards Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -326,14 +429,23 @@ export default function DashboardPage() {
                         <CardDescription>Recursos recebidos via NC</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <div className="space-y-6">
-                            <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
-                                <div>
-                                    <p className="text-sm text-slate-400">Total de NCs</p>
-                                    <p className="text-3xl font-bold text-white">{stats.ncsRecebidas}</p>
+                        <div className="space-y-4">
+                            {/* Grid com contadores */}
+                            <div className="grid grid-cols-3 gap-3">
+                                <div className="p-3 bg-blue-950/30 rounded-lg border border-blue-900/50 text-center">
+                                    <p className="text-xs text-blue-400 uppercase tracking-wider">Ativas</p>
+                                    <p className="text-2xl font-bold text-blue-400">{stats.ncsAtivas}</p>
                                 </div>
-                                <Package className="h-12 w-12 text-purple-500/20" />
+                                <div className="p-3 bg-emerald-950/30 rounded-lg border border-emerald-900/50 text-center">
+                                    <p className="text-xs text-emerald-400 uppercase tracking-wider">Concluídas</p>
+                                    <p className="text-2xl font-bold text-emerald-400">{stats.ncsConcluidas}</p>
+                                </div>
+                                <div className="p-3 bg-purple-950/30 rounded-lg border border-purple-900/50 text-center">
+                                    <p className="text-xs text-purple-400 uppercase tracking-wider">Total</p>
+                                    <p className="text-2xl font-bold text-purple-400">{stats.ncsTotal}</p>
+                                </div>
                             </div>
+                            {/* Valor Total */}
                             <div className="flex items-center justify-between p-4 bg-slate-950/50 rounded-lg border border-slate-800">
                                 <div>
                                     <p className="text-sm text-slate-400">Valor Total Recebido</p>

@@ -4,9 +4,11 @@ import { useState, useEffect } from "react";
 import { FornecedorForm } from "@/features/fornecedores/components/FornecedorForm";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { FilterBar } from "@/components/shared/FilterBar";
+import { LoadingState } from "@/components/shared/LoadingState";
+import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { formatMoney, formatPhone } from "@/app/lib/formatters";
 import { Button } from "@/components/ui/button";
-import { Plus, Phone, Mail, ChevronDown, ChevronUp, ExternalLink, Loader2, Copy, Layers, Box, CheckCircle, AlertCircle, Wallet, Package, Pencil, Trash2 } from "lucide-react";
+import { Plus, Phone, Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Layers, Box, CheckCircle, AlertCircle, Wallet, Package, Pencil, Trash2 } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { db } from "@/app/lib/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
@@ -18,6 +20,7 @@ export default function FornecedoresPage() {
     const [loading, setLoading] = useState(true);
     const [open, setOpen] = useState(false);
     const [editingData, setEditingData] = useState<any>(null);
+    const [confirmDelete, setConfirmDelete] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
     const [busca, setBusca] = useState("");
 
     // Filtro de Status
@@ -28,11 +31,18 @@ export default function FornecedoresPage() {
 
     const [processoMap, setProcessoMap] = useState<any>({});
     const [empenhosList, setEmpenhosList] = useState<any[]>([]);
+    const [entregasList, setEntregasList] = useState<any[]>([]);
 
     const loadData = async () => {
         setLoading(true);
         try {
-            const fSnap = await getDocs(collection(db, "fornecedores"));
+            const [fSnap, pSnap, eSnap, entSnap] = await Promise.all([
+                getDocs(collection(db, "fornecedores")),
+                getDocs(collection(db, "processos")),
+                getDocs(collection(db, "empenhos")),
+                getDocs(collection(db, "entregas"))
+            ]);
+
             const fList = fSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             // Ordenar por data de cadastro (mais recente primeiro)
             fList.sort((a: any, b: any) => {
@@ -42,14 +52,15 @@ export default function FornecedoresPage() {
             });
             setFornecedores(fList);
 
-            const pSnap = await getDocs(collection(db, "processos"));
             const pMap: any = {};
             pSnap.docs.forEach(d => { pMap[d.id] = { id: d.id, ...d.data() }; });
             setProcessoMap(pMap);
 
-            const eSnap = await getDocs(collection(db, "empenhos"));
             const eList = eSnap.docs.map(d => ({ id: d.id, ...d.data() }));
             setEmpenhosList(eList);
+
+            const entList = entSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+            setEntregasList(entList);
         } catch (error) {
             console.error(error);
         } finally {
@@ -72,17 +83,18 @@ export default function FornecedoresPage() {
         setOpen(true);
     };
 
-    const handleDelete = async (e: React.MouseEvent, id: string) => {
+    const handleDelete = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (confirm("Tem certeza que deseja EXCLUIR este fornecedor? Isso não pode ser desfeito.")) {
-            try {
-                await deleteDoc(doc(db, "fornecedores", id));
-                alert("Fornecedor excluído.");
-                loadData();
-            } catch (error) {
-                console.error(error);
-                alert("Erro ao excluir.");
-            }
+        setConfirmDelete({ open: true, id });
+    };
+
+    const confirmDeleteAction = async () => {
+        if (!confirmDelete.id) return;
+        try {
+            await deleteDoc(doc(db, "fornecedores", confirmDelete.id));
+            loadData();
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -132,7 +144,32 @@ export default function FornecedoresPage() {
         exportToExcel(dados, "Relatorio_Fornecedores_Completo");
     };
 
-    // --- FILTROS (LÓGICA CORRIGIDA) ---
+    // --- FUNÇÃO PARA CALCULAR STATUS DINÂMICO DO PROCESSO ---
+    const getDynamicProcessStatus = (p: any) => {
+        if (!p) return null;
+        if (p.status === "CANCELADO" || p.status === "SUSPENSO") return p.status;
+
+        // Verificar se tem empenhos vinculados
+        const empenhosDoProcesso = empenhosList.filter((e: any) => e.id_processo === p.id);
+        if (empenhosDoProcesso.length === 0) return p.status;
+
+        // Verificar entregas dos empenhos
+        const entregasDoProcesso = entregasList.filter((ent: any) =>
+            empenhosDoProcesso.some((emp: any) => emp.id === ent.id_empenho)
+        );
+
+        if (entregasDoProcesso.length === 0) return p.status;
+
+        // Se todas as entregas estiverem concluídas/liquidadas
+        const todosConcluidos = entregasDoProcesso.every((ent: any) =>
+            ent.status === "LIQUIDADO" || ent.status === "ENTREGUE" || ent.status === "CONCLUIDO"
+        );
+        if (todosConcluidos && entregasDoProcesso.length > 0) return "CONCLUIDO";
+
+        return p.status;
+    };
+
+    // --- FILTROS (LÓGICA CORRIGIDA COM STATUS DINÂMICO) ---
     const fornecedoresFiltrados = fornecedores.filter(f => {
         const matchText = f.empresa.toLowerCase().includes(busca.toLowerCase()) || f.cnpj.includes(busca);
         if (!matchText) return false;
@@ -146,11 +183,13 @@ export default function FornecedoresPage() {
             return statusFilter === "ATIVOS";
         }
 
-        // 2. Se tem vínculos, verificamos se existe pelo menos UM que NÃO esteja concluído/cancelado
+        // 2. Se tem vínculos, verificamos se existe pelo menos UM que NÃO esteja concluído/cancelado (usando status dinâmico)
         const temProcessoAtivo = vinculos.some((v: any) => {
             const p = processoMap[v.processoId];
-            // Se o processo existe E o status dele é diferente de CONCLUIDO ou CANCELADO, conta como ativo
-            return p && p.status !== "CONCLUIDO" && p.status !== "CANCELADO";
+            if (!p) return false;
+            const dynamicStatus = getDynamicProcessStatus(p);
+            // Se o status dinâmico é diferente de CONCLUIDO ou CANCELADO, conta como ativo
+            return dynamicStatus !== "CONCLUIDO" && dynamicStatus !== "CANCELADO";
         });
 
         if (statusFilter === "ATIVOS") return temProcessoAtivo;
@@ -160,7 +199,7 @@ export default function FornecedoresPage() {
     });
 
     return (
-        <div className="space-y-6 animate-in fade-in">
+        <div className="space-y-6 pb-10 animate-in fade-in">
             <PageHeader
                 title="Fornecedores"
                 description="Gestão de empresas e controle de saldo."
@@ -196,7 +235,7 @@ export default function FornecedoresPage() {
             />
 
             <div className="grid grid-cols-1 gap-4">
-                {loading ? <div className="p-12 text-center"><Loader2 className="animate-spin inline text-blue-500" /> Carregando...</div> :
+                {loading ? <LoadingState text="Carregando fornecedores..." /> :
                     fornecedoresFiltrados.length === 0 ? <div className="p-12 text-center text-slate-500">Nenhum fornecedor encontrado.</div> :
                         fornecedoresFiltrados.map((f) => {
                             const totalEmpenhadoReais = empenhosList
@@ -223,7 +262,9 @@ export default function FornecedoresPage() {
                                         .filter(e => e.id_fornecedor === f.id && e.id_processo === pid)
                                         .reduce((acc, curr) => acc + (parseFloat(curr.valorEmpenhado) || 0), 0);
 
-                                    if (p.status === "CONCLUIDO") { concluidos++; }
+                                    // Usar status dinâmico em vez do status do Firestore
+                                    const dynamicStatus = getDynamicProcessStatus(p);
+                                    if (dynamicStatus === "CONCLUIDO") { concluidos++; }
                                     else {
                                         if (empenhadoNeste === 0) disponiveis++;
                                         else emAndamento++;
@@ -427,6 +468,16 @@ export default function FornecedoresPage() {
                             )
                         })}
             </div>
+
+            <ConfirmDialog
+                open={confirmDelete.open}
+                onOpenChange={(open) => setConfirmDelete({ open, id: null })}
+                title="Excluir Fornecedor"
+                description="Tem certeza que deseja EXCLUIR este fornecedor? Isso não pode ser desfeito."
+                onConfirm={confirmDeleteAction}
+                confirmText="Excluir"
+                variant="danger"
+            />
         </div>
     );
 }
