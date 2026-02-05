@@ -8,11 +8,29 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Loader2, UserPlus } from "lucide-react";
 import Link from "next/link";
 
+// Lista de postos/graduações do Exército
+const POSTOS_GRADUACOES = [
+    { valor: "Cap", label: "Capitão", simples: "Cap" },
+    { valor: "1º Ten", label: "1º Tenente", simples: "Ten" },
+    { valor: "2º Ten", label: "2º Tenente", simples: "Ten" },
+    { valor: "Asp", label: "Aspirante", simples: "Asp" },
+    { valor: "S Ten", label: "Subtenente", simples: "S Ten" },
+    { valor: "1º Sgt", label: "1º Sargento", simples: "Sgt" },
+    { valor: "2º Sgt", label: "2º Sargento", simples: "Sgt" },
+    { valor: "3º Sgt", label: "3º Sargento", simples: "Sgt" },
+    { valor: "Cb", label: "Cabo", simples: "Cb" },
+    { valor: "Sd EP", label: "Soldado EP", simples: "Sd" },
+    { valor: "Sd EV", label: "Soldado EV", simples: "Sd" },
+];
+
 export default function RegisterPage() {
-    const [name, setName] = useState("");
+    const [nomeCompleto, setNomeCompleto] = useState("");
+    const [nomeGuerra, setNomeGuerra] = useState("");
+    const [postoGrad, setPostoGrad] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -25,6 +43,21 @@ export default function RegisterPage() {
         setError("");
 
         // Validações
+        if (!nomeCompleto.trim()) {
+            setError("Por favor, insira seu nome completo");
+            return;
+        }
+
+        if (!nomeGuerra.trim()) {
+            setError("Por favor, insira seu nome de guerra");
+            return;
+        }
+
+        if (!postoGrad) {
+            setError("Por favor, selecione seu posto/graduação");
+            return;
+        }
+
         if (password !== confirmPassword) {
             setError("As senhas não coincidem");
             return;
@@ -35,21 +68,23 @@ export default function RegisterPage() {
             return;
         }
 
-        if (!name.trim()) {
-            setError("Por favor, insira seu nome");
-            return;
-        }
-
         setLoading(true);
 
         try {
+            // Encontrar o posto simplificado para saudação
+            const postoInfo = POSTOS_GRADUACOES.find(p => p.valor === postoGrad);
+            const postoGradSimples = postoInfo?.simples || postoGrad;
+
             // Criar usuário no Firebase Auth
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
             // Criar documento do usuário no Firestore (AGUARDANDO APROVAÇÃO)
             await setDoc(doc(db, "users", user.uid), {
-                name: name.trim(),
+                nomeCompleto: nomeCompleto.trim(),
+                nomeGuerra: nomeGuerra.trim().toUpperCase(),
+                postoGrad: postoGrad,
+                postoGradSimples: postoGradSimples,
                 email: email,
                 approved: false, // IMPORTANTE: novo usuário NÃO está aprovado
                 createdAt: new Date(),
@@ -87,20 +122,54 @@ export default function RegisterPage() {
                 {/* Register Card */}
                 <div className="bg-slate-900/50 backdrop-blur-sm border border-slate-800 rounded-2xl p-8 shadow-2xl animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <form onSubmit={handleRegister} className="space-y-4">
+                        {/* Nome Completo */}
                         <div>
-                            <Label htmlFor="name" className="text-slate-300">Nome Completo</Label>
+                            <Label htmlFor="nomeCompleto" className="text-slate-300">Nome Completo</Label>
                             <Input
-                                id="name"
+                                id="nomeCompleto"
                                 type="text"
-                                value={name}
-                                onChange={(e) => setName(e.target.value)}
-                                placeholder="João Silva"
+                                value={nomeCompleto}
+                                onChange={(e) => setNomeCompleto(e.target.value)}
+                                placeholder="João da Silva Santos"
                                 className="mt-1.5 bg-slate-950/50 border-slate-800 text-white placeholder:text-slate-500"
                                 required
                                 disabled={loading}
                             />
                         </div>
 
+                        {/* Nome de Guerra */}
+                        <div>
+                            <Label htmlFor="nomeGuerra" className="text-slate-300">Nome de Guerra</Label>
+                            <Input
+                                id="nomeGuerra"
+                                type="text"
+                                value={nomeGuerra}
+                                onChange={(e) => setNomeGuerra(e.target.value)}
+                                placeholder="SILVA"
+                                className="mt-1.5 bg-slate-950/50 border-slate-800 text-white placeholder:text-slate-500 uppercase"
+                                required
+                                disabled={loading}
+                            />
+                        </div>
+
+                        {/* Posto/Graduação */}
+                        <div>
+                            <Label htmlFor="postoGrad" className="text-slate-300">Posto/Graduação</Label>
+                            <Select value={postoGrad} onValueChange={setPostoGrad} disabled={loading}>
+                                <SelectTrigger className="mt-1.5 bg-slate-950/50 border-slate-800 text-white">
+                                    <SelectValue placeholder="Selecione seu posto/graduação" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {POSTOS_GRADUACOES.map((posto) => (
+                                        <SelectItem key={posto.valor} value={posto.valor}>
+                                            {posto.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Email */}
                         <div>
                             <Label htmlFor="email" className="text-slate-300">Email</Label>
                             <Input
@@ -115,6 +184,7 @@ export default function RegisterPage() {
                             />
                         </div>
 
+                        {/* Senha */}
                         <div>
                             <Label htmlFor="password" className="text-slate-300">Senha</Label>
                             <Input
@@ -130,6 +200,7 @@ export default function RegisterPage() {
                             />
                         </div>
 
+                        {/* Confirmar Senha */}
                         <div>
                             <Label htmlFor="confirmPassword" className="text-slate-300">Confirmar Senha</Label>
                             <Input

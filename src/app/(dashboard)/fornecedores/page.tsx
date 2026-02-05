@@ -117,15 +117,26 @@ export default function FornecedoresPage() {
                 const pid = v.processoId;
                 const p = processoMap[pid];
                 if (p) {
-                    const empenhadoNeste = empenhosList
-                        .filter(e => e.id_fornecedor === f.id && e.id_processo === pid)
-                        .reduce((acc, curr) => acc + (parseFloat(curr.valorEmpenhado) || 0), 0);
+                    // Calcular status baseado na mesma lógica do filtro
+                    const empenhosDoFornecedor = empenhosList.filter((e: any) =>
+                        e.id_processo === pid && e.id_fornecedor === f.id
+                    );
 
-                    if (p.status === "CONCLUIDO") {
-                        concluidos++;
+                    if (empenhosDoFornecedor.length === 0) {
+                        disponiveis++;
                     } else {
-                        if (empenhadoNeste === 0) disponiveis++;
-                        else empenhados++;
+                        const entregasDosFornecedor = entregasList.filter((ent: any) =>
+                            empenhosDoFornecedor.some((emp: any) => emp.id === ent.id_empenho)
+                        );
+
+                        const todasLiquidadas = entregasDosFornecedor.length > 0 &&
+                            entregasDosFornecedor.every((ent: any) => ent.status === "LIQUIDADO");
+
+                        if (todasLiquidadas) {
+                            concluidos++;
+                        } else {
+                            empenhados++;
+                        }
                     }
                 }
             });
@@ -144,32 +155,62 @@ export default function FornecedoresPage() {
         exportToExcel(dados, "Relatorio_Fornecedores_Completo");
     };
 
-    // --- FUNÇÃO PARA CALCULAR STATUS DINÂMICO DO PROCESSO ---
-    const getDynamicProcessStatus = (p: any) => {
-        if (!p) return null;
-        if (p.status === "CANCELADO" || p.status === "SUSPENSO") return p.status;
+    // --- FUNÇÃO PARA CALCULAR STATUS DINÂMICO DO PROCESSO PARA UM FORNECEDOR ---
+    const getProcessStatusForFornecedor = (p: any, fornecedorId: string) => {
+        if (!p) return { status: 'DESCONHECIDO', label: 'Desconhecido' };
+        if (p.status === "CANCELADO") return { status: 'CANCELADO', label: 'Cancelado' };
+        if (p.status === "SUSPENSO") return { status: 'SUSPENSO', label: 'Suspenso' };
 
-        // Verificar se tem empenhos vinculados
-        const empenhosDoProcesso = empenhosList.filter((e: any) => e.id_processo === p.id);
-        if (empenhosDoProcesso.length === 0) return p.status;
-
-        // Verificar entregas dos empenhos
-        const entregasDoProcesso = entregasList.filter((ent: any) =>
-            empenhosDoProcesso.some((emp: any) => emp.id === ent.id_empenho)
+        // Verificar se tem empenhos vinculados a este fornecedor neste processo
+        const empenhosDoFornecedor = empenhosList.filter((e: any) =>
+            e.id_processo === p.id && e.id_fornecedor === fornecedorId
         );
 
-        if (entregasDoProcesso.length === 0) return p.status;
+        // Se não tem empenho = Disponível
+        if (empenhosDoFornecedor.length === 0) {
+            return { status: 'DISPONIVEL', label: 'Disponível' };
+        }
 
-        // Se todas as entregas estiverem concluídas/liquidadas
-        const todosConcluidos = entregasDoProcesso.every((ent: any) =>
-            ent.status === "LIQUIDADO" || ent.status === "ENTREGUE" || ent.status === "CONCLUIDO"
+        // Verificar entregas dos empenhos deste fornecedor
+        const entregasDosFornecedor = entregasList.filter((ent: any) =>
+            empenhosDoFornecedor.some((emp: any) => emp.id === ent.id_empenho)
         );
-        if (todosConcluidos && entregasDoProcesso.length > 0) return "CONCLUIDO";
 
-        return p.status;
+        // Se não tem entregas ainda = Em Execução (aguardando entrega)
+        if (entregasDosFornecedor.length === 0) {
+            return { status: 'EM_EXECUCAO', label: 'Em Execução' };
+        }
+
+        // Verificar se TODAS as entregas estão liquidadas
+        const todasLiquidadas = entregasDosFornecedor.every((ent: any) =>
+            ent.status === "LIQUIDADO"
+        );
+
+        if (todasLiquidadas) {
+            return { status: 'CONCLUIDO', label: 'Concluído' };
+        }
+
+        // Se tem entregas mas não todas liquidadas = Em Execução
+        return { status: 'EM_EXECUCAO', label: 'Em Execução' };
     };
 
-    // --- FILTROS (LÓGICA CORRIGIDA COM STATUS DINÂMICO) ---
+    // --- VERIFICAR SE PROCESSO É SRP (Sistema de Registro de Preço) ---
+    const isSRP = (p: any, vinc: any) => {
+        const tipoFornecimento = vinc?.tipoFornecimento || p?.tipoFornecimento || "";
+        return tipoFornecimento === "SRP";
+    };
+
+    // --- VERIFICAR SE SRP AINDA ESTÁ VIGENTE ---
+    const isSRPVigente = (p: any) => {
+        if (!p?.dataVigenciaAta) return true; // Se não tem data, considera vigente
+        const dataVigencia = new Date(p.dataVigenciaAta);
+        const hoje = new Date();
+        hoje.setHours(0, 0, 0, 0);
+        dataVigencia.setHours(0, 0, 0, 0);
+        return dataVigencia >= hoje;
+    };
+
+    // --- FILTROS (LÓGICA ATUALIZADA COM SRP) ---
     const fornecedoresFiltrados = fornecedores.filter(f => {
         const matchText = f.empresa.toLowerCase().includes(busca.toLowerCase()) || f.cnpj.includes(busca);
         if (!matchText) return false;
@@ -183,17 +224,36 @@ export default function FornecedoresPage() {
             return statusFilter === "ATIVOS";
         }
 
-        // 2. Se tem vínculos, verificamos se existe pelo menos UM que NÃO esteja concluído/cancelado (usando status dinâmico)
-        const temProcessoAtivo = vinculos.some((v: any) => {
+        // 2. Verificar cada processo
+        let temProcessoAtivo = false;
+        let temSRPVigente = false;
+
+        vinculos.forEach((v: any) => {
             const p = processoMap[v.processoId];
-            if (!p) return false;
-            const dynamicStatus = getDynamicProcessStatus(p);
-            // Se o status dinâmico é diferente de CONCLUIDO ou CANCELADO, conta como ativo
-            return dynamicStatus !== "CONCLUIDO" && dynamicStatus !== "CANCELADO";
+            if (!p) return;
+
+            const { status } = getProcessStatusForFornecedor(p, f.id);
+
+            // Verificar se é SRP e se está vigente
+            if (isSRP(p, v) && isSRPVigente(p)) {
+                temSRPVigente = true;
+            }
+
+            // Se NÃO é concluído/cancelado, conta como ativo
+            if (status !== "CONCLUIDO" && status !== "CANCELADO") {
+                temProcessoAtivo = true;
+            }
         });
 
-        if (statusFilter === "ATIVOS") return temProcessoAtivo;
-        if (statusFilter === "CONCLUIDOS") return !temProcessoAtivo; // Só exibe aqui se TODOS estiverem concluídos
+        // Regra especial: SRP vigente mantém o fornecedor ativo
+        if (statusFilter === "ATIVOS") {
+            return temProcessoAtivo || temSRPVigente;
+        }
+
+        // Para ir para CONCLUÍDOS: NÃO pode ter processo ativo E NÃO pode ter SRP vigente
+        if (statusFilter === "CONCLUIDOS") {
+            return !temProcessoAtivo && !temSRPVigente;
+        }
 
         return true;
     });
@@ -258,17 +318,12 @@ export default function FornecedoresPage() {
                             processosVinculadosIds.forEach((pid: string) => {
                                 const p = processoMap[pid];
                                 if (p) {
-                                    const empenhadoNeste = empenhosList
-                                        .filter(e => e.id_fornecedor === f.id && e.id_processo === pid)
-                                        .reduce((acc, curr) => acc + (parseFloat(curr.valorEmpenhado) || 0), 0);
+                                    // Usar nova função de status
+                                    const { status } = getProcessStatusForFornecedor(p, f.id);
 
-                                    // Usar status dinâmico em vez do status do Firestore
-                                    const dynamicStatus = getDynamicProcessStatus(p);
-                                    if (dynamicStatus === "CONCLUIDO") { concluidos++; }
-                                    else {
-                                        if (empenhadoNeste === 0) disponiveis++;
-                                        else emAndamento++;
-                                    }
+                                    if (status === "DISPONIVEL") disponiveis++;
+                                    else if (status === "EM_EXECUCAO") emAndamento++;
+                                    else if (status === "CONCLUIDO") concluidos++;
                                 }
                             });
 
@@ -382,8 +437,19 @@ export default function FornecedoresPage() {
                                                     // RECUPERAR TIPO (Prioridade: do Vínculo, senão do Processo)
                                                     const tipoFornecimento = vinc.tipoFornecimento || procData.tipoFornecimento || "REMESSA_UNICA";
 
-                                                    // Estilo da Badge
-                                                    const badgeColor = isTotalmenteEmpenhado ? "bg-purple-900/30 text-purple-400 border-purple-900" : "bg-blue-900/30 text-blue-400 border-blue-900";
+                                                    // Calcular status do processo para este fornecedor
+                                                    const { status: procStatus, label: procStatusLabel } = getProcessStatusForFornecedor(procData, f.id);
+
+                                                    // Cores do status
+                                                    const statusColors: Record<string, string> = {
+                                                        'DISPONIVEL': 'bg-yellow-900/30 text-yellow-400 border-yellow-900',
+                                                        'EM_EXECUCAO': 'bg-blue-900/30 text-blue-400 border-blue-900',
+                                                        'CONCLUIDO': 'bg-emerald-900/30 text-emerald-400 border-emerald-900',
+                                                        'CANCELADO': 'bg-red-900/30 text-red-400 border-red-900',
+                                                        'SUSPENSO': 'bg-slate-900/30 text-slate-400 border-slate-900'
+                                                    };
+
+                                                    const statusBadgeColor = statusColors[procStatus] || 'bg-slate-900/30 text-slate-400 border-slate-900';
                                                     const isItemsOpen = expandedProcessItems === `${f.id}-${pid}`;
 
                                                     return (
@@ -393,10 +459,14 @@ export default function FornecedoresPage() {
                                                                     <div className="flex items-center gap-2 mb-1">
                                                                         <span className="text-xs font-bold bg-slate-800 px-2 py-0.5 rounded text-white border border-slate-700">{procData.modalidade}</span>
                                                                         <span className="text-white font-bold text-lg">{procData.numero}</span>
+                                                                        {/* Badge de Status */}
+                                                                        <span className={`text-xs px-2 py-0.5 rounded border ${statusBadgeColor} uppercase font-bold`}>
+                                                                            {procStatusLabel}
+                                                                        </span>
                                                                     </div>
                                                                     <p className="text-sm text-slate-400">{procData.objetoResumo}</p>
                                                                     <div className="mt-2 flex gap-2">
-                                                                        <span className={`text-xs px-2 py-0.5 rounded border ${badgeColor} flex items-center gap-1 uppercase`}>
+                                                                        <span className={`text-xs px-2 py-0.5 rounded border bg-slate-800/50 text-slate-300 border-slate-700 flex items-center gap-1 uppercase`}>
                                                                             <Box className="h-3 w-3" /> {tipoFornecimento.replace("_", " ")}
                                                                         </span>
                                                                     </div>

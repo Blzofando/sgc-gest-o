@@ -35,6 +35,7 @@ export function ProcessoForm({ onSuccess, dataToEdit }: ProcessoFormProps) {
    const [isDetalhado, setIsDetalhado] = useState(true);
    const [valorTotal, setValorTotal] = useState("");
    const [itens, setItens] = useState<ItemProcesso[]>([]);
+   const [dataVigenciaAta, setDataVigenciaAta] = useState("");
 
    // Carregar dados para edição
    useEffect(() => {
@@ -48,6 +49,7 @@ export function ProcessoForm({ onSuccess, dataToEdit }: ProcessoFormProps) {
          setIsDetalhado(dataToEdit.modo === "DETALHADO");
          setValorTotal(dataToEdit.valorTotalEstimado?.toString() || "");
          setItens(dataToEdit.itens || []);
+         setDataVigenciaAta(dataToEdit.dataVigenciaAta || "");
       }
    }, [dataToEdit]);
 
@@ -74,6 +76,7 @@ export function ProcessoForm({ onSuccess, dataToEdit }: ProcessoFormProps) {
             modo: isDetalhado ? "DETALHADO" : "SIMPLES",
             dataAtualizacao: new Date(),
             ...(isDetalhado ? { itens } : { valorTotalEstimado: parseFloat(valorTotal) || 0 }),
+            ...(tipoFornecimento === "SRP" ? { dataVigenciaAta } : {}),
          };
 
          if (!dataToEdit) {
@@ -90,7 +93,7 @@ export function ProcessoForm({ onSuccess, dataToEdit }: ProcessoFormProps) {
          if (onSuccess) onSuccess();
 
          if (!dataToEdit) {
-            setNumero(""); setObjeto(""); setItens([]); setValorTotal("");
+            setNumero(""); setObjeto(""); setItens([]); setValorTotal(""); setDataVigenciaAta("");
          }
 
       } catch (error) {
@@ -137,11 +140,26 @@ export function ProcessoForm({ onSuccess, dataToEdit }: ProcessoFormProps) {
                   <SelectTrigger className="bg-slate-950 border-slate-700"><SelectValue /></SelectTrigger>
                   <SelectContent>
                      <SelectItem value="REMESSA_UNICA">Remessa Única</SelectItem>
-                     <SelectItem value="REMESSA_CONTINUA">Remessa Contínua</SelectItem>
+                     <SelectItem value="SRP">SRP (Registro de Preço)</SelectItem>
                   </SelectContent>
                </Select>
             </div>
          </div>
+
+         {/* Campo de Vigência da Ata - apenas para SRP */}
+         {tipoFornecimento === "SRP" && (
+            <div className="space-y-2 animate-in fade-in bg-blue-900/20 p-4 rounded border border-blue-800">
+               <Label className="text-blue-300">Prazo de Vigência da Ata *</Label>
+               <Input
+                  type="date"
+                  value={dataVigenciaAta}
+                  onChange={(e) => setDataVigenciaAta(e.target.value)}
+                  className="bg-slate-950 border-slate-700 max-w-xs"
+                  required
+               />
+               <p className="text-xs text-slate-400">Data até a qual a ata estará disponível para empenho.</p>
+            </div>
+         )}
 
          <div className="space-y-2">
             <Label>Descrição</Label>

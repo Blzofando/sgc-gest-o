@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/app/lib/firebase";
 import { signOut } from "firebase/auth";
+import { useAuth } from "@/providers/AuthProvider";
 import {
   LayoutDashboard,
   FileText,
@@ -28,6 +29,7 @@ export default function DashboardLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const { userData } = useAuth();
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -42,6 +44,11 @@ export default function DashboardLayout({
       : "text-slate-400 hover:bg-slate-800 hover:text-slate-100"
       }`;
   };
+
+  // Dados do usuário para exibição no header
+  const nomeExibicao = userData?.nomeGuerra || "Usuário";
+  const postoExibicao = userData?.postoGrad || "";
+  const iniciais = nomeExibicao.substring(0, 2).toUpperCase();
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-100 overflow-hidden font-sans">
@@ -128,12 +135,12 @@ export default function DashboardLayout({
             <NotificationBellWrapper />
             <div className="flex items-center gap-3 border-l border-slate-800 pl-4">
               <div className="text-right hidden sm:block">
-                <p className="text-sm font-medium text-white">Admin</p>
-                <p className="text-xs text-slate-400">Gestor</p>
+                <p className="text-sm font-medium text-white">{nomeExibicao}</p>
+                <p className="text-xs text-slate-400">{postoExibicao}</p>
               </div>
               <Avatar>
-                <AvatarImage src="https://github.com/shadcn.png" />
-                <AvatarFallback>AD</AvatarFallback>
+                <AvatarImage src="" />
+                <AvatarFallback className="bg-blue-600 text-white">{iniciais}</AvatarFallback>
               </Avatar>
             </div>
           </div>

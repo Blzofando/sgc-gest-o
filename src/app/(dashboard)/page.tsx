@@ -7,6 +7,7 @@ import { formatMoney } from "@/app/lib/formatters";
 import { motion } from "framer-motion";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingState } from "@/components/shared/LoadingState";
+import { useAuth } from "@/providers/AuthProvider";
 import {
     FileText, CheckCircle, AlertCircle, DollarSign,
     Wallet, TrendingUp, Package, Filter
@@ -14,7 +15,16 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+// Função para obter saudação baseada na hora
+function getSaudacao(): string {
+    const hora = new Date().getHours();
+    if (hora >= 0 && hora < 12) return "Bom dia";
+    if (hora >= 12 && hora < 18) return "Boa tarde";
+    return "Boa noite";
+}
+
 export default function DashboardPage() {
+    const { userData } = useAuth();
     const [loading, setLoading] = useState(true);
     const [selectedND, setSelectedND] = useState<string>("TODAS");
     const [availableNDs, setAvailableNDs] = useState<string[]>([]);
@@ -259,13 +269,21 @@ export default function DashboardPage() {
 
     const maxOrcamento = Math.max(...orcamentoData.map(d => d.value));
 
+    // Montar saudação personalizada
+    const saudacao = getSaudacao();
+    const nomeExibicao = userData?.nomeGuerra || "Usuário";
+    const postoExibicao = userData?.postoGradSimples || "";
+    const saudacaoCompleta = postoExibicao
+        ? `${saudacao}, ${postoExibicao} ${nomeExibicao}`
+        : `${saudacao}, ${nomeExibicao}`;
+
     return (
         <div className="space-y-8 pb-10 animate-in fade-in duration-500">
-            {/* Header */}
-            <PageHeader
-                title="Dashboard Geral"
-                description="Visão clara e intuitiva dos processos e orçamento."
-            />
+            {/* Saudação Personalizada */}
+            <div className="mb-2">
+                <h1 className="text-2xl font-bold text-white">{saudacaoCompleta}</h1>
+                <p className="text-slate-400 text-sm">Visão clara e intuitiva dos processos e orçamento.</p>
+            </div>
 
             {/* Cards Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

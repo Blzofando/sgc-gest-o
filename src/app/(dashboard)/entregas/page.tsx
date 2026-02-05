@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -40,6 +41,10 @@ export default function EntregasPage() {
     const [motivoProrrogacaoModal, setMotivoProrrogacaoModal] = useState("");
     const [diasProrrogacaoModal, setDiasProrrogacaoModal] = useState<number | null>(null);
     const [dataProrrogacaoCustomModal, setDataProrrogacaoCustomModal] = useState("");
+
+    // Query params para abrir modal via notificação
+    const searchParams = useSearchParams();
+    const openId = searchParams.get('open');
 
     const fetchData = async () => {
         setLoading(true);
@@ -92,6 +97,38 @@ export default function EntregasPage() {
     };
 
     useEffect(() => { fetchData() }, []);
+
+    // Abrir modal automaticamente via query param (ex: notificação)
+    useEffect(() => {
+        if (!loading && openId) {
+            // Tentar encontrar a entrega
+            const entrega = entregas.find(e => e.id === openId);
+            if (entrega) {
+                // Abrir modal de visualização da entrega
+                const contextEmpenho = empenhos.find(emp => emp.id === entrega.id_empenho);
+                setViewItemsData({
+                    itemsData: entrega,
+                    contextEmpenho: contextEmpenho,
+                    isDelivery: true,
+                    isResidue: false
+                });
+                setItemsModalOpen(true);
+            } else {
+                // Pode ser um empenho aguardando início
+                const empenho = empenhos.find(e => e.id === openId);
+                if (empenho) {
+                    setViewItemsData({
+                        itemsData: empenho,
+                        contextEmpenho: empenho,
+                        isDelivery: false,
+                        isResidue: false
+                    });
+                    setItemsModalOpen(true);
+                }
+            }
+        }
+    }, [loading, openId, entregas, empenhos]);
+
 
     const handleStartDelivery = (empenho: any) => {
         setSelectedItem(empenho);

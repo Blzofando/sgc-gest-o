@@ -17,7 +17,7 @@ export interface Processo {
 
     // Novos Campos
     categoria: "MATERIAL" | "SERVICO";
-    tipoFornecimento: "REMESSA_UNICA" | "REMESSA_CONTINUA";
+    tipoFornecimento: "REMESSA_UNICA" | "SRP";
     status: ProcessoStatus;
 
     valorTotalEstimado?: number;
@@ -26,6 +26,7 @@ export interface Processo {
 
     dataCriacao: any;
     dataAtualizacao?: any;
+    dataVigenciaAta?: string; // Obrigatório para SRP - prazo de vigência da ata
 }
 
 export interface Fornecedor {

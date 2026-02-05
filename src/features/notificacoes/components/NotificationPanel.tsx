@@ -97,19 +97,20 @@ export function NotificationPanel({
 
     const handleNavigate = (n: Notificacao) => {
         onClose();
-        // Navegar para o módulo correto
+        // Navegar para o módulo correto com o ID da entidade
+        const entidadeId = n.entidadeId;
         switch (n.modulo) {
             case 'ENTREGA':
-                router.push('/entregas');
+                router.push(`/entregas?open=${entidadeId}`);
                 break;
             case 'NC':
-                router.push('/ncs');
+                router.push(`/ncs?open=${entidadeId}`);
                 break;
             case 'EMPENHO':
-                router.push('/empenhos');
+                router.push(`/empenhos?open=${entidadeId}`);
                 break;
             case 'PROCESSO':
-                router.push('/processos');
+                router.push(`/processos?open=${entidadeId}`);
                 break;
         }
     };

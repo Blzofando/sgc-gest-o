@@ -18,6 +18,7 @@ export interface Notificacao {
 
 interface NotificacaoLida {
     id: string;
+    notificacaoId?: string; // ID da notificação (usado para lookup)
     dispensada: boolean;
     dataLeitura: Date;
 }
@@ -40,7 +41,7 @@ export function useNotifications(
         const hoje = new Date();
         hoje.setHours(0, 0, 0, 0);
 
-        const lidasMap = new Map(notificacoesLidas.map(n => [n.id, n]));
+        const lidasMap = new Map(notificacoesLidas.map(n => [n.notificacaoId || n.id, n]));
 
         // ========================================
         // 🚚 ENTREGAS
@@ -233,11 +234,16 @@ export function useNotifications(
 
             const prazo = nc.prazo && nc.prazo !== 'IMEDIATO' ? new Date(nc.prazo) : null;
             const valorTotal = nc.valorTotal || 0;
-            const totalEmpenhado = nc.totalEmpenhado || 0;
+
+            // Calcular total empenhado a partir dos empenhos vinculados a esta NC
+            const empenhosDestaNC = empenhos.filter((e: any) => e.id_nc === nc.id);
+            const totalEmpenhado = empenhosDestaNC.reduce((acc: number, e: any) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
+
             const saldoDisponivel = valorTotal - totalEmpenhado - (nc.valorRecolhido || 0);
             const percentualSaldo = valorTotal > 0 ? saldoDisponivel / valorTotal : 0;
 
-            if (saldoDisponivel <= 0.01) return; // Sem saldo
+            // Se não tem saldo ou está zerado, não precisa de notificação (já é CONCLUIDO)
+            if (saldoDisponivel <= 0.01 || percentualSaldo < 0.01) return;
 
             const entidadeRef = nc.numero || nc.id;
 
@@ -294,6 +300,24 @@ export function useNotifications(
                             diasRestantes
                         });
                     }
+                }
+            }
+
+            // NC com saldo baixo (< 5%) - Sugerir recolhimento
+            if (percentualSaldo > 0 && percentualSaldo <= 0.05) {
+                const id = `nc-saldo-baixo-${nc.id}`;
+                if (!lidasMap.get(id)?.dispensada) {
+                    result.push({
+                        id,
+                        tipo: 'NC_SALDO_BAIXO_RECOLHER',
+                        modulo: 'NC',
+                        prioridade: 'MEDIA',
+                        titulo: `NC ${entidadeRef}: Saldo baixo (${(percentualSaldo * 100).toFixed(1)}%)`,
+                        descricao: `Restam R$ ${saldoDisponivel.toLocaleString('pt-BR')}. Deseja recolher?`,
+                        entidadeId: nc.id,
+                        entidadeRef,
+                        dataCriacao: hoje
+                    });
                 }
             }
 

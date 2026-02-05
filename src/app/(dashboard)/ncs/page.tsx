@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { NCForm } from "@/features/ncs/components/NCForm";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { LoadingState } from "@/components/shared/LoadingState";
@@ -59,6 +60,20 @@ export default function NcsPage() {
 
   useEffect(() => { fetchData() }, []);
 
+  // Query params para abrir NC via notificação
+  const searchParams = useSearchParams();
+  const openId = searchParams.get('open');
+
+  // Abrir/expandir NC automaticamente via query param
+  useEffect(() => {
+    if (!loading && openId && ncs.length > 0) {
+      const nc = ncs.find(n => n.id === openId);
+      if (nc) {
+        setExpandedId(openId);
+      }
+    }
+  }, [loading, openId, ncs]);
+
   const getNCData = (nc: any) => {
     // Calcular total empenhado a partir dos empenhos vinculados a esta NC
     const empenhosDestaNC = empenhos.filter((e: any) => e.id_nc === nc.id);
@@ -76,15 +91,25 @@ export default function NcsPage() {
     const valorRecolhido = nc.recolhidoManual ? (nc.valorTotal - totalEmpenhado) : (nc.valorRecolhido || 0);
     const saldoDisponivel = nc.valorTotal - totalEmpenhado - valorRecolhido;
 
+    // Calcular percentual do saldo
+    const percentualSaldo = nc.valorTotal > 0 ? saldoDisponivel / nc.valorTotal : 0;
+
     let status = "DISPONIVEL";
-    if (nc.recolhidoManual) status = "CONCLUIDO";
-    else if (saldoDisponivel <= 0.01 && totalEmpenhado > 0) status = "EM_UTILIZACAO";
-    else if (saldoDisponivel > 0.01) status = "DISPONIVEL";
 
-    // Se totalmente liquidado
-    if (totalLiquidado >= totalEmpenhado && totalEmpenhado > 0 && saldoDisponivel < 1) status = "CONCLUIDO";
+    // NC com saldo zerado (ou menor que 1%) vai automaticamente para CONCLUIDO
+    if (nc.recolhidoManual || saldoDisponivel <= 0.01 || percentualSaldo < 0.01) {
+      status = "CONCLUIDO";
+    } else if (totalEmpenhado > 0 && saldoDisponivel < nc.valorTotal) {
+      // Se tem empenho mas ainda tem saldo = EM_UTILIZACAO
+      status = "EM_UTILIZACAO";
+    }
 
-    return { totalEmpenhado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido: nc.recolhidoManual };
+    // Se totalmente liquidado também é CONCLUIDO
+    if (totalLiquidado >= totalEmpenhado && totalEmpenhado > 0 && saldoDisponivel < 1) {
+      status = "CONCLUIDO";
+    }
+
+    return { totalEmpenhado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido: nc.recolhidoManual, percentualSaldo };
   };
 
   // Re-implementing the filter logic correctly inside the component
