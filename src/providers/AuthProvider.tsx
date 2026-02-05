@@ -7,12 +7,12 @@ import { doc, getDoc } from "firebase/firestore";
 import { useRouter, usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
 
-// Interface para dados do usuário salvos no Firestore
 export interface UserData {
   nomeCompleto: string;
   nomeGuerra: string;
   postoGrad: string;       // "3º Sgt"
   postoGradSimples: string; // "Sgt" (para saudação)
+  telefone: string;
   email: string;
   approved: boolean;
   role: string;
@@ -69,6 +69,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               nomeGuerra: data.nomeGuerra || "",
               postoGrad: data.postoGrad || "",
               postoGradSimples: data.postoGradSimples || "",
+              telefone: data.telefone || "",
               email: data.email || currentUser.email || "",
               approved: data.approved || false,
               role: data.role || "user"
@@ -127,7 +128,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   }, [user, isApproved, loading, pathname, router]);
 
-  if (loading) {
+  // Determinar se pode renderizar o conteúdo
+  const publicPages = ["/login", "/register"];
+  const isPublicPage = publicPages.includes(pathname);
+  const isPendingPage = pathname === "/pending";
+
+  // Verificar se o usuário está autorizado a ver o conteúdo atual
+  const canRenderContent = () => {
+    if (loading) return false; // Ainda carregando
+
+    // Páginas públicas sempre podem ser renderizadas
+    if (isPublicPage) return true;
+
+    // Página /pending só pode ser vista se estiver logado
+    if (isPendingPage && user) return true;
+
+    // Dashboard e outras páginas protegidas só podem ser vistas se logado E aprovado
+    if (!isPublicPage && !isPendingPage) {
+      return user && isApproved;
+    }
+
+    return false;
+  };
+
+  if (loading || !canRenderContent()) {
     return (
       <div className="h-screen w-screen flex items-center justify-center bg-slate-950">
         <div className="flex flex-col items-center gap-4">

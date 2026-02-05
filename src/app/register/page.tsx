@@ -31,6 +31,7 @@ export default function RegisterPage() {
     const [nomeCompleto, setNomeCompleto] = useState("");
     const [nomeGuerra, setNomeGuerra] = useState("");
     const [postoGrad, setPostoGrad] = useState("");
+    const [telefone, setTelefone] = useState("");
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
@@ -79,14 +80,14 @@ export default function RegisterPage() {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
-            // Criar documento do usuário no Firestore (AGUARDANDO APROVAÇÃO)
             await setDoc(doc(db, "users", user.uid), {
                 nomeCompleto: nomeCompleto.trim(),
                 nomeGuerra: nomeGuerra.trim().toUpperCase(),
                 postoGrad: postoGrad,
                 postoGradSimples: postoGradSimples,
+                telefone: telefone.trim(),
                 email: email,
-                approved: false, // IMPORTANTE: novo usuário NÃO está aprovado
+                approved: false,
                 createdAt: new Date(),
                 role: "user"
             });
@@ -167,6 +168,20 @@ export default function RegisterPage() {
                                     ))}
                                 </SelectContent>
                             </Select>
+                        </div>
+
+                        {/* Telefone */}
+                        <div>
+                            <Label htmlFor="telefone" className="text-slate-300">Telefone</Label>
+                            <Input
+                                id="telefone"
+                                type="tel"
+                                value={telefone}
+                                onChange={(e) => setTelefone(e.target.value)}
+                                placeholder="(11) 99999-9999"
+                                className="mt-1.5 bg-slate-950/50 border-slate-800 text-white placeholder:text-slate-500"
+                                disabled={loading}
+                            />
                         </div>
 
                         {/* Email */}

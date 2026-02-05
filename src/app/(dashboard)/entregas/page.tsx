@@ -17,6 +17,7 @@ import { EntregaCard } from "@/features/entregas/components/EntregaCard";
 import { EntregaWizard } from "@/features/entregas/components/EntregaWizard";
 import { FilterBar } from "@/components/shared/FilterBar";
 import { formatMoney } from "@/app/lib/formatters";
+import { ContactEmailModal } from "@/features/email/components";
 
 export default function EntregasPage() {
     const [loading, setLoading] = useState(true);
@@ -41,6 +42,10 @@ export default function EntregasPage() {
     const [motivoProrrogacaoModal, setMotivoProrrogacaoModal] = useState("");
     const [diasProrrogacaoModal, setDiasProrrogacaoModal] = useState<number | null>(null);
     const [dataProrrogacaoCustomModal, setDataProrrogacaoCustomModal] = useState("");
+
+    // Contact Modal State
+    const [contactModalOpen, setContactModalOpen] = useState(false);
+    const [contactContext, setContactContext] = useState<any>(null);
 
     // Query params para abrir modal via notificação
     const searchParams = useSearchParams();
@@ -82,8 +87,11 @@ export default function EntregasPage() {
                     ...e,
                     fornecedorNome: fornecedor?.empresa || "Desconhecido",
                     fornecedorContato: fornecedor?.telefone || "---",
+                    fornecedorEmail: fornecedor?.email || "",
+                    fornecedorCnpj: fornecedor?.cnpj || "",
                     processoNumero: processo?.numero || "---",
-                    notaCredito: nc?.numero || "---" // Map NC Number
+                    processoModalidade: processo?.modalidade || "",
+                    notaCredito: nc?.numero || "---"
                 };
             });
 
@@ -461,7 +469,26 @@ export default function EntregasPage() {
                                         {viewItemsData?.contextEmpenho?.fornecedorNome || "---"}
                                     </span>
                                 </div>
-                                <Button variant="outline" size="sm" className="h-7 text-xs border-slate-700 hover:bg-slate-800">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className="h-7 text-xs border-slate-700 hover:bg-slate-800"
+                                    onClick={() => {
+                                        const emp = viewItemsData?.contextEmpenho;
+                                        setContactContext({
+                                            fornecedorNome: emp?.fornecedorNome,
+                                            fornecedorCnpj: emp?.fornecedorCnpj,
+                                            fornecedorEmail: emp?.fornecedorEmail,
+                                            empenhoNumero: emp?.numero,
+                                            ncNumero: emp?.notaCredito,
+                                            processoNumero: emp?.processoNumero,
+                                            modalidade: emp?.processoModalidade,
+                                            valorEmpenhado: parseFloat(emp?.valorEmpenhado) || 0,
+                                            prazo: viewItemsData?.itemsData?.prazo || emp?.prazo
+                                        });
+                                        setContactModalOpen(true);
+                                    }}
+                                >
                                     Entrar em Contato
                                 </Button>
                             </div>
@@ -684,6 +711,15 @@ export default function EntregasPage() {
 
                 </DialogContent>
             </Dialog>
+
+            {/* Contact Email Modal */}
+            {contactContext && (
+                <ContactEmailModal
+                    open={contactModalOpen}
+                    onOpenChange={setContactModalOpen}
+                    context={contactContext}
+                />
+            )}
         </div>
     );
 }

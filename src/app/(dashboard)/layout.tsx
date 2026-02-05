@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { NotificationBellWrapper } from "@/features/notificacoes/components";
+import { MilitaryAvatar } from "@/components/shared/MilitaryAvatar";
 
 export default function DashboardLayout({
   children,
@@ -106,10 +107,12 @@ export default function DashboardLayout({
         </nav>
 
         <div className="p-4 border-t border-slate-800 space-y-2">
-          <Button variant="ghost" className="w-full justify-start gap-3 text-slate-400 hover:bg-slate-800">
-            <Settings className="h-5 w-5" />
-            Configurações
-          </Button>
+          <Link href="/configuracoes">
+            <Button variant="ghost" className={getLinkClass("/configuracoes")}>
+              <Settings className="h-5 w-5" />
+              Configurações
+            </Button>
+          </Link>
           <Button onClick={handleLogout} variant="ghost" className="w-full justify-start gap-3 text-red-400 hover:bg-red-950/30 hover:text-red-300">
             <LogOut className="h-5 w-5" />
             Sair
@@ -138,10 +141,7 @@ export default function DashboardLayout({
                 <p className="text-sm font-medium text-white">{nomeExibicao}</p>
                 <p className="text-xs text-slate-400">{postoExibicao}</p>
               </div>
-              <Avatar>
-                <AvatarImage src="" />
-                <AvatarFallback className="bg-blue-600 text-white">{iniciais}</AvatarFallback>
-              </Avatar>
+              <MilitaryAvatar posto={postoExibicao} size={40} />
             </div>
           </div>
         </header>
