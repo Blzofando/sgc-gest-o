@@ -15,7 +15,8 @@ import {
   LogOut,
   Search,
   Users,
-  CreditCard
+  CreditCard,
+  Plane
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -88,6 +89,13 @@ export default function DashboardLayout({
             <Button variant="ghost" className={getLinkClass("/ncs")}>
               <CreditCard className="h-5 w-5" />
               Notas de Crédito
+            </Button>
+          </Link>
+
+          <Link href="/diarias">
+            <Button variant="ghost" className={getLinkClass("/diarias")}>
+              <Plane className="h-5 w-5" />
+              Diárias
             </Button>
           </Link>
 

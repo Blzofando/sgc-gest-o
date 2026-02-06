@@ -38,3 +38,33 @@ export interface Fornecedor {
     processosVinculados?: any[];
     dataCadastro: any;
 }
+
+// ====== DIÁRIAS ======
+
+export interface MilitarFavorecido {
+    id: string;                    // UUID
+    nome: string;                  // Nome de guerra do militar
+    numDiarias: number;            // Quantidade de diárias (ex: 1.5)
+    valorUnitario: number;         // Valor de cada diária (R$)
+}
+
+export interface Diaria {
+    id?: string;                       // ID Firestore
+    numeroDiex: string;                // Número do DIEX de autorização
+    missao: string;                    // Descrição da missão
+    local: string;                     // Local de destino
+    dataHoraIda: any;                  // Timestamp Firebase
+    dataHoraVolta: any;                // Timestamp Firebase
+    militares: MilitarFavorecido[];    // Lista de favorecidos
+
+    // Financeiro
+    id_nc: string;                     // FK → ncs (NC de crédito vinculada)
+    valorTotal: number;                // Soma de todos militares (calculado)
+
+    // Controle
+    observacoes?: string;              // Observações opcionais
+
+    // Timestamps
+    dataCriacao: any;                  // Timestamp Firebase
+    dataAtualizacao?: any;             // Timestamp Firebase
+}
