@@ -34,8 +34,9 @@ export default function DashboardPage() {
         processos: any[],
         empenhos: any[],
         entregas: any[],
-        ncs: any[]
-    }>({ processos: [], empenhos: [], entregas: [], ncs: [] });
+        ncs: any[],
+        diarias: any[]
+    }>({ processos: [], empenhos: [], entregas: [], ncs: [], diarias: [] });
 
     const [stats, setStats] = useState({
         processosAbertos: 0,
@@ -58,17 +59,19 @@ export default function DashboardPage() {
         const loadDashboard = async () => {
             try {
                 setLoading(true);
-                const [procSnap, empSnap, entSnap, ncSnap] = await Promise.all([
+                const [procSnap, empSnap, entSnap, ncSnap, diaSnap] = await Promise.all([
                     getDocs(collection(db, "processos")),
                     getDocs(collection(db, "empenhos")),
                     getDocs(collection(db, "entregas")),
-                    getDocs(collection(db, "ncs"))
+                    getDocs(collection(db, "ncs")),
+                    getDocs(collection(db, "diarias"))
                 ]);
 
                 const processos = procSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const empenhos = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const entregas = entSnap.docs.map(d => ({ id: d.id, ...d.data() }));
                 const ncs = ncSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+                const diarias = diaSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
                 // Extrair NDs únicas
                 const nds = new Set<string>();
@@ -76,7 +79,7 @@ export default function DashboardPage() {
                 empenhos.forEach((e: any) => { if (e.nd) nds.add(e.nd) });
                 setAvailableNDs(Array.from(nds).sort());
 
-                setRawData({ processos, empenhos, entregas, ncs });
+                setRawData({ processos, empenhos, entregas, ncs, diarias });
 
             } catch (error) {
                 console.error(error);
@@ -92,7 +95,7 @@ export default function DashboardPage() {
     useEffect(() => {
         if (loading) return;
 
-        const { processos, empenhos, entregas, ncs } = rawData;
+        const { processos, empenhos, entregas, ncs, diarias } = rawData;
 
         // --- PROCESSOS (Calcular status dinâmico baseado em entregas) ---
         // Função para calcular status dinâmico de um processo
@@ -149,6 +152,16 @@ export default function DashboardPage() {
                 return emp && emp.nd === selectedND;
             });
 
+        // Diárias: Filtrar por NC que tenha a ND selecionada
+        const diariasFiltradas = selectedND === "TODAS"
+            ? diarias
+            : diarias.filter((dia: any) => {
+                const nc = ncs.find((n: any) => n.id === dia.id_nc);
+                if (!nc) return false;
+                // Verificar se a NC tem crédito com a ND selecionada
+                return nc.creditos?.some((c: any) => c.nd === selectedND) || nc.nd === selectedND;
+            });
+
         // NCs: Calcular valores com base na lógica de status
         let valorNcsRecebidas = 0;
         let ncsTotal = 0;
@@ -161,6 +174,15 @@ export default function DashboardPage() {
             if (emp.id_nc) {
                 const current = empenhosPorNcId.get(emp.id_nc) || 0;
                 empenhosPorNcId.set(emp.id_nc, current + (parseFloat(emp.valorEmpenhado) || 0));
+            }
+        });
+
+        // Criar mapa de diárias por NC
+        const diariasPorNcId = new Map<string, number>();
+        diariasFiltradas.forEach((dia: any) => {
+            if (dia.id_nc) {
+                const current = diariasPorNcId.get(dia.id_nc) || 0;
+                diariasPorNcId.set(dia.id_nc, current + (parseFloat(dia.valorTotal) || 0));
             }
         });
 
@@ -186,22 +208,25 @@ export default function DashboardPage() {
                 const valorNC = creditosFiltrados.reduce((acc: number, c: any) => acc + (parseFloat(c.valor) || 0), 0);
                 valorNcsRecebidas += valorNC;
 
-                // Calcular status da NC usando id da NC
+                // Calcular status da NC usando id da NC (incluindo diárias)
                 const totalEmpenhadoNC = empenhosPorNcId.get(nc.id) || 0;
+                const totalDiariasNC = diariasPorNcId.get(nc.id) || 0;
+                const totalUtilizadoNC = totalEmpenhadoNC + totalDiariasNC;
                 const valorRecolhidoNC = nc.recolhidoManual
-                    ? (nc.valorTotal - totalEmpenhadoNC)
+                    ? (nc.valorTotal - totalUtilizadoNC)
                     : (nc.valorRecolhido || 0);
-                const saldoDisponivel = nc.valorTotal - totalEmpenhadoNC - valorRecolhidoNC;
+                const saldoDisponivel = nc.valorTotal - totalUtilizadoNC - valorRecolhidoNC;
 
                 // Calcular liquidado da NC através dos empenhos vinculados (usando id_nc)
-                let totalLiquidadoNC = 0;
+                // Diárias são consideradas liquidadas quando criadas
+                let totalLiquidadoNC = totalDiariasNC;
                 empenhosFiltrados.filter((e: any) => e.id_nc === nc.id).forEach((emp: any) => {
                     totalLiquidadoNC += liquidadoPorEmpenho.get(emp.id) || 0;
                 });
 
                 // Determinar se está concluída
                 const isConcluido = nc.recolhidoManual ||
-                    (totalLiquidadoNC >= totalEmpenhadoNC && totalEmpenhadoNC > 0 && saldoDisponivel < 1);
+                    (totalLiquidadoNC >= totalUtilizadoNC && totalUtilizadoNC > 0 && saldoDisponivel < 1);
 
                 if (isConcluido) {
                     ncsConcluidas++;
@@ -211,8 +236,10 @@ export default function DashboardPage() {
             }
         });
 
-        // Total Liquidado das entregas
-        const valorLiquidado = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.liquidado) || 0), 0);
+        // Total Liquidado das entregas + diárias
+        const valorLiquidadoEntregas = entregasFiltradas.reduce((acc: number, ent: any) => acc + (parseFloat(ent.valores?.liquidado) || 0), 0);
+        const valorLiquidadoDiarias = diariasFiltradas.reduce((acc: number, dia: any) => acc + (parseFloat(dia.valorTotal) || 0), 0);
+        const valorLiquidado = valorLiquidadoEntregas + valorLiquidadoDiarias;
 
         // Total Recolhido das NCs (soma dos valorRecolhido de NCs que foram recolhidas manualmente)
         let valorRecolhido = 0;
@@ -225,7 +252,8 @@ export default function DashboardPage() {
                 // Usar valorRecolhido salvo na NC ou calcular baseado em recolhidoManual
                 if (nc.recolhidoManual) {
                     const totalEmpenhadoNC = empenhosPorNcId.get(nc.id) || 0;
-                    valorRecolhido += (parseFloat(nc.valorTotal) || 0) - totalEmpenhadoNC;
+                    const totalDiariasNC = diariasPorNcId.get(nc.id) || 0;
+                    valorRecolhido += (parseFloat(nc.valorTotal) || 0) - totalEmpenhadoNC - totalDiariasNC;
                 } else if (nc.valorRecolhido) {
                     valorRecolhido += parseFloat(nc.valorRecolhido) || 0;
                 }

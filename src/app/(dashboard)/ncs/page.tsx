@@ -19,6 +19,7 @@ export default function NcsPage() {
   const [ncs, setNcs] = useState<any[]>([]);
   const [empenhos, setEmpenhos] = useState<any[]>([]);
   const [entregas, setEntregas] = useState<any[]>([]);
+  const [diarias, setDiarias] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [busca, setBusca] = useState("");
@@ -41,19 +42,22 @@ export default function NcsPage() {
     setLoading(true);
     try {
       const ncsQuery = query(collection(db, "ncs"), orderBy("dataEmissao", "desc"));
-      const [ncsSnap, empSnap, entSnap] = await Promise.all([
+      const [ncsSnap, empSnap, entSnap, diaSnap] = await Promise.all([
         getDocs(ncsQuery),
         getDocs(collection(db, "empenhos")),
-        getDocs(collection(db, "entregas"))
+        getDocs(collection(db, "entregas")),
+        getDocs(collection(db, "diarias"))
       ]);
 
       const ncsList = ncsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const empenhosList = empSnap.docs.map(d => ({ id: d.id, ...d.data() }));
       const entregasList = entSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+      const diariasList = diaSnap.docs.map(d => ({ id: d.id, ...d.data() }));
 
       setNcs(ncsList);
       setEmpenhos(empenhosList);
       setEntregas(entregasList);
+      setDiarias(diariasList);
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
@@ -79,8 +83,16 @@ export default function NcsPage() {
     const empenhosDestaNC = empenhos.filter((e: any) => e.id_nc === nc.id);
     const totalEmpenhado = empenhosDestaNC.reduce((acc: number, e: any) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
 
+    // Calcular total de diárias vinculadas a esta NC
+    const diariasDestaNC = diarias.filter((d: any) => d.id_nc === nc.id);
+    const totalDiarias = diariasDestaNC.reduce((acc: number, d: any) => acc + (parseFloat(d.valorTotal) || 0), 0);
+
+    // Total utilizado = empenhos + diárias
+    const totalUtilizado = totalEmpenhado + totalDiarias;
+
     // Calcular total liquidado a partir das entregas dos empenhos vinculados
-    let totalLiquidado = 0;
+    // Diárias são consideradas liquidadas quando criadas (pagamento direto)
+    let totalLiquidado = totalDiarias;
     empenhosDestaNC.forEach((emp: any) => {
       const entregasDoEmpenho = entregas.filter((ent: any) => ent.id_empenho === emp.id);
       entregasDoEmpenho.forEach((ent: any) => {
@@ -88,8 +100,8 @@ export default function NcsPage() {
       });
     });
 
-    const valorRecolhido = nc.recolhidoManual ? (nc.valorTotal - totalEmpenhado) : (nc.valorRecolhido || 0);
-    const saldoDisponivel = nc.valorTotal - totalEmpenhado - valorRecolhido;
+    const valorRecolhido = nc.recolhidoManual ? (nc.valorTotal - totalUtilizado) : (nc.valorRecolhido || 0);
+    const saldoDisponivel = nc.valorTotal - totalUtilizado - valorRecolhido;
 
     // Calcular percentual do saldo
     const percentualSaldo = nc.valorTotal > 0 ? saldoDisponivel / nc.valorTotal : 0;
@@ -99,17 +111,17 @@ export default function NcsPage() {
     // NC com saldo zerado (ou menor que 1%) vai automaticamente para CONCLUIDO
     if (nc.recolhidoManual || saldoDisponivel <= 0.01 || percentualSaldo < 0.01) {
       status = "CONCLUIDO";
-    } else if (totalEmpenhado > 0 && saldoDisponivel < nc.valorTotal) {
+    } else if (totalUtilizado > 0 && saldoDisponivel < nc.valorTotal) {
       // Se tem empenho mas ainda tem saldo = EM_UTILIZACAO
       status = "EM_UTILIZACAO";
     }
 
     // Se totalmente liquidado também é CONCLUIDO
-    if (totalLiquidado >= totalEmpenhado && totalEmpenhado > 0 && saldoDisponivel < 1) {
+    if (totalLiquidado >= totalUtilizado && totalUtilizado > 0 && saldoDisponivel < 1) {
       status = "CONCLUIDO";
     }
 
-    return { totalEmpenhado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido: nc.recolhidoManual, percentualSaldo };
+    return { totalEmpenhado, totalDiarias, totalUtilizado, totalLiquidado, saldoDisponivel, valorRecolhido, status, isRecolhido: nc.recolhidoManual, percentualSaldo };
   };
 
   // Re-implementing the filter logic correctly inside the component

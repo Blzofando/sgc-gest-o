@@ -8,12 +8,13 @@ import { LoadingState } from "@/components/shared/LoadingState";
 import { ConfirmDialog } from "@/components/shared/ConfirmDialog";
 import { formatMoney, formatPhone } from "@/app/lib/formatters";
 import { Button } from "@/components/ui/button";
-import { Plus, Phone, Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Layers, Box, CheckCircle, AlertCircle, Wallet, Package, Pencil, Trash2 } from "lucide-react";
+import { Plus, Phone, Mail, ChevronDown, ChevronUp, ExternalLink, Copy, Layers, Box, CheckCircle, AlertCircle, Wallet, Package, Pencil, Trash2, MessageSquare } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { db } from "@/app/lib/firebase";
 import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import { exportToExcel } from "@/app/lib/excel";
 import Link from "next/link";
+import { ContactEmailModal } from "@/features/email/components/ContactEmailModal";
 
 export default function FornecedoresPage() {
     const [fornecedores, setFornecedores] = useState<any[]>([]);
@@ -32,6 +33,10 @@ export default function FornecedoresPage() {
     const [processoMap, setProcessoMap] = useState<any>({});
     const [empenhosList, setEmpenhosList] = useState<any[]>([]);
     const [entregasList, setEntregasList] = useState<any[]>([]);
+
+    // Estado para modal de contato
+    const [contactModalOpen, setContactModalOpen] = useState(false);
+    const [contactContext, setContactContext] = useState<any>({});
 
     const loadData = async () => {
         setLoading(true);
@@ -102,6 +107,16 @@ export default function FornecedoresPage() {
         setEditingData(null);
         setOpen(true);
     }
+
+    const handleContact = (e: React.MouseEvent, fornecedor: any) => {
+        e.stopPropagation();
+        setContactContext({
+            fornecedorNome: fornecedor.empresa,
+            fornecedorCnpj: fornecedor.cnpj,
+            fornecedorEmail: fornecedor.email,
+        });
+        setContactModalOpen(true);
+    };
 
     const handleExport = () => {
         const dados = fornecedoresFiltrados.map(f => {
@@ -355,6 +370,16 @@ export default function FornecedoresPage() {
                                                             <Mail className="h-3 w-3 text-blue-400" /> {f.email} <Copy className="h-2 w-2 opacity-50 ml-1" />
                                                         </span>
                                                     )}
+                                                    {f.email && (
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="border-emerald-700 text-emerald-400 hover:bg-emerald-900/30"
+                                                            onClick={(e) => handleContact(e, f)}
+                                                        >
+                                                            <MessageSquare className="h-3 w-3 mr-1" /> Entrar em Contato
+                                                        </Button>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -547,6 +572,12 @@ export default function FornecedoresPage() {
                 onConfirm={confirmDeleteAction}
                 confirmText="Excluir"
                 variant="danger"
+            />
+
+            <ContactEmailModal
+                open={contactModalOpen}
+                onOpenChange={setContactModalOpen}
+                context={contactContext}
             />
         </div>
     );

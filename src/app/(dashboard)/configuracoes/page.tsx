@@ -175,6 +175,16 @@ const VARIAVEIS_DISPONIVEIS = [
     { variavel: "*data_hoje*", descricao: "Data atual" },
 ];
 
+// Modificadores de formatação
+const MODIFICADORES_FORMATACAO = [
+    { modificador: ":upper", descricao: "CAIXA ALTA", exemplo: "*nome:upper* → SILVA" },
+    { modificador: ":lower", descricao: "minúsculas", exemplo: "*nome:lower* → silva" },
+    { modificador: ":title", descricao: "Iniciais Maiúsculas", exemplo: "*nome_completo:title* → João Da Silva" },
+    { modificador: ":capitalize", descricao: "Primeira maiúscula", exemplo: "*nome:capitalize* → Silva" },
+    { modificador: ":bold", descricao: "Negrito (Markdown)", exemplo: "*nome:bold* → **SILVA**" },
+    { modificador: ":underline", descricao: "Sublinhado", exemplo: "*nome:underline* → S̲I̲L̲V̲A̲" },
+];
+
 interface Predefinicao {
     id?: string;
     nome: string;
@@ -477,7 +487,7 @@ export default function ConfiguracoesPage() {
                                 <div className="p-12 text-center text-slate-500 bg-slate-900 rounded-lg border border-slate-800">
                                     <Mail className="w-12 h-12 mx-auto mb-4 opacity-50" />
                                     <p>Nenhuma predefinição criada.</p>
-                                    <p className="text-sm">Clique em "Nova Predefinição" para começar.</p>
+                                    <p className="text-sm">Clique em &quot;Nova Predefinição&quot; para começar.</p>
                                 </div>
                             ) : predefinicoes.map((pred) => (
                                 <div key={pred.id} className="bg-slate-900 border border-slate-800 rounded-lg p-4 hover:border-slate-700 transition-colors">
@@ -572,14 +582,16 @@ export default function ConfiguracoesPage() {
 
             {/* Help Dialog - Variáveis */}
             <Dialog open={helpOpen} onOpenChange={setHelpOpen}>
-                <DialogContent className="sm:max-w-[500px] bg-slate-950 border-slate-800 text-slate-100">
+                <DialogContent className="sm:max-w-[550px] bg-slate-950 border-slate-800 text-slate-100">
                     <DialogHeader>
-                        <DialogTitle>Variáveis Disponíveis</DialogTitle>
-                        <DialogDescription>Use estas variáveis no assunto e corpo do email. Serão substituídas automaticamente.</DialogDescription>
+                        <DialogTitle>Variáveis e Formatação</DialogTitle>
+                        <DialogDescription>Use estas variáveis no assunto e corpo do email. Adicione modificadores para formatar.</DialogDescription>
                     </DialogHeader>
 
-                    <ScrollArea className="h-[400px] pr-4">
-                        <div className="space-y-2">
+                    <ScrollArea className="h-[450px] pr-4">
+                        {/* Seção de Variáveis */}
+                        <h4 className="text-sm font-bold text-slate-300 mb-3">Variáveis Disponíveis</h4>
+                        <div className="space-y-2 mb-6">
                             {VARIAVEIS_DISPONIVEIS.map((v) => (
                                 <div key={v.variavel} className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800 hover:border-slate-700">
                                     <div>
@@ -591,6 +603,33 @@ export default function ConfiguracoesPage() {
                                     </Button>
                                 </div>
                             ))}
+                        </div>
+
+                        {/* Seção de Modificadores */}
+                        <h4 className="text-sm font-bold text-slate-300 mb-3 pt-4 border-t border-slate-800">Modificadores de Formatação</h4>
+                        <p className="text-xs text-slate-500 mb-3">Adicione após a variável: <code className="text-emerald-400">*variavel:modificador*</code></p>
+                        <div className="space-y-2">
+                            {MODIFICADORES_FORMATACAO.map((m) => (
+                                <div key={m.modificador} className="flex items-center justify-between p-3 bg-slate-900 rounded border border-slate-800 hover:border-slate-700">
+                                    <div className="flex-1">
+                                        <div className="flex items-center gap-2">
+                                            <code className="text-emerald-400 font-mono text-sm">{m.modificador}</code>
+                                            <span className="text-xs text-slate-500">{m.descricao}</span>
+                                        </div>
+                                        <p className="text-xs text-slate-400 mt-1 font-mono">{m.exemplo}</p>
+                                    </div>
+                                    <Button variant="ghost" size="icon" onClick={() => copyToClipboard(m.modificador)} className="text-slate-500 hover:text-white h-8 w-8">
+                                        <Copy className="w-3 h-3" />
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Dica de combinação */}
+                        <div className="mt-4 p-3 bg-blue-900/20 rounded border border-blue-900/50">
+                            <p className="text-xs text-blue-300">
+                                <strong>Dica:</strong> Combine modificadores! Ex: <code className="text-blue-400">*nome_completo:title:bold*</code> → <strong>João Da Silva</strong>
+                            </p>
                         </div>
                     </ScrollArea>
                 </DialogContent>

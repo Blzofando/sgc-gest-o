@@ -76,29 +76,78 @@ export function ContactEmailModal({ open, onOpenChange, context }: ContactEmailM
         return `${diff} dias`;
     };
 
-    // Substituir variáveis no texto
-    const substituirVariaveis = (texto: string): string => {
+    // Aplicar modificadores de formatação
+    const aplicarFormatacao = (valor: string, modificadores: string[]): string => {
+        let resultado = valor;
+
+        for (const mod of modificadores) {
+            switch (mod.toLowerCase()) {
+                case 'upper':
+                    resultado = resultado.toUpperCase();
+                    break;
+                case 'lower':
+                    resultado = resultado.toLowerCase();
+                    break;
+                case 'title':
+                    resultado = resultado.replace(/\w\S*/g, txt =>
+                        txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase()
+                    );
+                    break;
+                case 'capitalize':
+                    resultado = resultado.charAt(0).toUpperCase() + resultado.slice(1).toLowerCase();
+                    break;
+                case 'bold':
+                    resultado = `**${resultado}**`;
+                    break;
+                case 'underline':
+                    resultado = resultado.split('').map(c => c + '\u0332').join('');
+                    break;
+            }
+        }
+
+        return resultado;
+    };
+
+    // Mapa de variáveis para seus valores
+    const getValorVariavel = (variavel: string): string => {
         const dataHoje = new Date().toLocaleDateString('pt-BR');
         const prazoFormatado = context.prazo
             ? new Date(context.prazo).toLocaleDateString('pt-BR', { timeZone: 'UTC' })
             : "N/A";
 
-        return texto
-            .replace(/\*nome\*/g, userData?.nomeGuerra || "")
-            .replace(/\*nome_completo\*/g, userData?.nomeCompleto || "")
-            .replace(/\*posto\*/g, userData?.postoGrad || "")
-            .replace(/\*telefone\*/g, userData?.telefone || "")
-            .replace(/\*fornecedor\*/g, context.fornecedorNome || "")
-            .replace(/\*cnpj\*/g, context.fornecedorCnpj || "")
-            .replace(/\*email_fornecedor\*/g, context.fornecedorEmail?.split(",")[0]?.trim() || "")
-            .replace(/\*empenho\*/g, context.empenhoNumero || "")
-            .replace(/\*nc\*/g, context.ncNumero || "")
-            .replace(/\*processo\*/g, context.processoNumero || "")
-            .replace(/\*modalidade\*/g, context.modalidade || "")
-            .replace(/\*valor\*/g, context.valorEmpenhado ? formatMoney(context.valorEmpenhado) : "")
-            .replace(/\*prazo\*/g, prazoFormatado)
-            .replace(/\*dias_restantes\*/g, calcularDiasRestantes())
-            .replace(/\*data_hoje\*/g, dataHoje);
+        const mapa: Record<string, string> = {
+            'nome': userData?.nomeGuerra || "",
+            'nome_completo': userData?.nomeCompleto || "",
+            'posto': userData?.postoGrad || "",
+            'telefone': userData?.telefone || "",
+            'fornecedor': context.fornecedorNome || "",
+            'cnpj': context.fornecedorCnpj || "",
+            'email_fornecedor': context.fornecedorEmail?.split(",")[0]?.trim() || "",
+            'empenho': context.empenhoNumero || "",
+            'nc': context.ncNumero || "",
+            'processo': context.processoNumero || "",
+            'modalidade': context.modalidade || "",
+            'valor': context.valorEmpenhado ? formatMoney(context.valorEmpenhado) : "",
+            'prazo': prazoFormatado,
+            'dias_restantes': calcularDiasRestantes(),
+            'data_hoje': dataHoje
+        };
+
+        return mapa[variavel] || "";
+    };
+
+    // Substituir variáveis no texto (com suporte a modificadores)
+    const substituirVariaveis = (texto: string): string => {
+        // Regex para capturar *variavel* ou *variavel:mod1:mod2*
+        return texto.replace(/\*([a-zA-Z_]+)((?::[a-zA-Z]+)*)\*/g, (match, variavel, mods) => {
+            const valor = getValorVariavel(variavel);
+            if (!valor) return "";
+
+            // Extrair modificadores (se houver)
+            const modificadores = mods ? mods.slice(1).split(':').filter(Boolean) : [];
+
+            return modificadores.length > 0 ? aplicarFormatacao(valor, modificadores) : valor;
+        });
     };
 
     // Abrir Gmail Web
