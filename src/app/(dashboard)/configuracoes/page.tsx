@@ -173,6 +173,8 @@ const VARIAVEIS_DISPONIVEIS = [
     { variavel: "*prazo*", descricao: "Data do prazo de entrega" },
     { variavel: "*dias_restantes*", descricao: "Dias restantes/atraso até o prazo" },
     { variavel: "*data_hoje*", descricao: "Data atual" },
+    { variavel: "*saudacao*", descricao: "Bom dia/Boa tarde/Boa noite (automático)" },
+    { variavel: "*itens*", descricao: "Lista de itens do empenho (• item)" },
 ];
 
 // Modificadores de formatação
@@ -181,8 +183,9 @@ const MODIFICADORES_FORMATACAO = [
     { modificador: ":lower", descricao: "minúsculas", exemplo: "*nome:lower* → silva" },
     { modificador: ":title", descricao: "Iniciais Maiúsculas", exemplo: "*nome_completo:title* → João Da Silva" },
     { modificador: ":capitalize", descricao: "Primeira maiúscula", exemplo: "*nome:capitalize* → Silva" },
-    { modificador: ":bold", descricao: "Negrito (Markdown)", exemplo: "*nome:bold* → **SILVA**" },
-    { modificador: ":underline", descricao: "Sublinhado", exemplo: "*nome:underline* → S̲I̲L̲V̲A̲" },
+    { modificador: ":bold", descricao: "𝗡𝗲𝗴𝗿𝗶𝘁𝗼 (Unicode)", exemplo: "*nome:bold* → 𝗦𝗜𝗟𝗩𝗔" },
+    { modificador: ":italic", descricao: "𝘐𝘵𝘢𝘭𝘪𝘤𝘰 (Unicode)", exemplo: "*nome:italic* → 𝘚𝘐𝘓𝘝𝘈" },
+    { modificador: ":underline", descricao: "S̲u̲b̲l̲i̲n̲h̲a̲d̲o̲", exemplo: "*nome:underline* → S̲I̲L̲V̲A̲" },
 ];
 
 interface Predefinicao {

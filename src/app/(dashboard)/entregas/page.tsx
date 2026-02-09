@@ -484,7 +484,8 @@ export default function EntregasPage() {
                                             processoNumero: emp?.processoNumero,
                                             modalidade: emp?.processoModalidade,
                                             valorEmpenhado: parseFloat(emp?.valorEmpenhado) || 0,
-                                            prazo: viewItemsData?.itemsData?.prazo || emp?.prazo
+                                            prazo: viewItemsData?.itemsData?.prazo || emp?.prazo,
+                                            itens: emp?.itens?.map((i: any) => ({ descricao: i.descricao, quantidade: parseFloat(i.quantidade) || 0 })) || []
                                         });
                                         setContactModalOpen(true);
                                     }}
@@ -713,13 +714,15 @@ export default function EntregasPage() {
             </Dialog>
 
             {/* Contact Email Modal */}
-            {contactContext && (
-                <ContactEmailModal
-                    open={contactModalOpen}
-                    onOpenChange={setContactModalOpen}
-                    context={contactContext}
-                />
-            )}
-        </div>
+            {
+                contactContext && (
+                    <ContactEmailModal
+                        open={contactModalOpen}
+                        onOpenChange={setContactModalOpen}
+                        context={contactContext}
+                    />
+                )
+            }
+        </div >
     );
 }
