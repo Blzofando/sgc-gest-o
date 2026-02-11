@@ -201,7 +201,7 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                 id_fornecedor: fornId,
                 id_nc: ncId,
                 valorEmpenhado: valorEmpenhoNum,
-                valorEmpenhado: valorEmpenhoNum,
+
                 itens: itensEmpenho.map((i: any) => ({ ...i, quantidade: parseFloat(i.quantidade) || 0 })),
                 status: initialData?.status || "EMPENHADO"
             };
