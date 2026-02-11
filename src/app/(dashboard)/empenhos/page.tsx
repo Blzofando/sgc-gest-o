@@ -21,7 +21,7 @@ export default function EmpenhosPage() {
     const [open, setOpen] = useState(false);
     const [busca, setBusca] = useState("");
     const [expandedId, setExpandedId] = useState<string | null>(null);
-    const [statusFilter, setStatusFilter] = useState("TODOS");
+    const [statusFilter, setStatusFilter] = useState("ATIVOS");
 
     // Edit State
     const [editingEmpenho, setEditingEmpenho] = useState<any>(null);
@@ -169,9 +169,9 @@ export default function EmpenhosPage() {
                 filterValue={statusFilter}
                 onFilterChange={setStatusFilter}
                 options={[
-                    { label: "TODOS", value: "TODOS" },
                     { label: "ATIVOS", value: "ATIVOS" },
-                    { label: "CONCLUÍDOS", value: "CONCLUIDOS" }
+                    { label: "CONCLUÍDOS", value: "CONCLUIDOS" },
+                    { label: "TODOS", value: "TODOS" }
                 ]}
             />
 

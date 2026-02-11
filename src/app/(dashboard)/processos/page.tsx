@@ -90,9 +90,36 @@ export default function ProcessosPage() {
       if (entregasDoProcesso.some(ent => ent.status === status)) return status;
     }
 
+    // 5. Lógica Específica para SRP (ou legado REMESSA_CONTINUA) - PRIORITÁRIA
+    if (p.tipoFornecimento === "SRP" || p.tipoFornecimento === "REMESSA_CONTINUA") {
+      // Verificar Vigência
+      if (p.dataVigenciaAta) {
+        const hoje = new Date();
+        const vigencia = new Date(p.dataVigenciaAta);
+        if (hoje > vigencia) return "CONCLUIDO"; // Ata Vencida
+      }
+
+      // Verificar Saldo da Ata (Total Estimado vs Total Empenhado)
+      // Calcular Total Empenhado para este processo
+      const totalEmpenhadoProcesso = empenhosDoProcesso.reduce((acc, e) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
+      const totalEstimadoProcesso = p.valorTotalEstimado || (p.itens?.reduce((acc, i) => acc + (i.quantidade * i.valorUnitarioRef), 0) || 0);
+
+      // Se já empenhou tudo (ou muito próximo, considerando erros de ponto flutuante)
+      if (totalEmpenhadoProcesso >= totalEstimadoProcesso - 0.01 && totalEstimadoProcesso > 0) {
+        return "CONCLUIDO";
+      }
+
+      // Se ainda tem saldo e vigência, e não tem entregas pendentes críticas, fica DISPONÍVEL
+      // Se tiver entregas em andamento, pode mostrar o status da entrega, mas "DISPONÍVEL" é um estado "Mestre" para SRP
+      // Vamos priorizar "DISPONÍVEL" para indicar que pode gerar novos empenhos, a menos que haja algo crítico travando.
+      return "DISPONIVEL";
+    }
+
     // Se todas as entregas estiverem concluídas/liquidadas
     const todosConcluidos = entregasDoProcesso.every(ent => ent.status === "LIQUIDADO" || ent.status === "ENTREGUE" || ent.status === "CONCLUIDO");
     if (todosConcluidos && entregasDoProcesso.length > 0) return "CONCLUIDO";
+
+
 
     return "EM_ANDAMENTO";
   };
@@ -240,7 +267,8 @@ export default function ProcessosPage() {
                       <td className="px-4 py-3">
                         <span className={`text-xs px-2 py-0.5 rounded border uppercase font-bold ${dynamicStatus === 'CONCLUIDO' ? 'bg-emerald-900/30 text-emerald-400 border-emerald-900' :
                           dynamicStatus === 'CANCELADO' ? 'bg-red-900/30 text-red-400 border-red-900' :
-                            'bg-blue-900/30 text-blue-400 border-blue-900'
+                            dynamicStatus === 'DISPONIVEL' ? 'bg-cyan-900/30 text-cyan-400 border-cyan-900' :
+                              'bg-blue-900/30 text-blue-400 border-blue-900'
                           }`}>
                           {dynamicStatus.replace(/_/g, " ")}
                         </span>
@@ -325,8 +353,30 @@ export default function ProcessosPage() {
                                     <p className="text-2xl font-bold text-white">{qtdEmpresas}</p>
                                     <p className="text-xs text-slate-500 uppercase font-bold">Empresas Vinculadas</p>
                                   </div>
+                                  <div>
+                                    <p className="text-2xl font-bold text-white">{qtdEmpresas}</p>
+                                    <p className="text-xs text-slate-500 uppercase font-bold">Empresas Vinculadas</p>
+                                  </div>
                                   <Layers className="h-8 w-8 text-slate-700" />
                                 </div>
+
+                                {/* Se for SRP, mostrar Saldo da Ata no lugar de contadores genéricos extra se quiser, ou adicionar novo card */}
+                                {(proc.tipoFornecimento === "SRP" || proc.tipoFornecimento === "REMESSA_CONTINUA") && (
+                                  <div className="bg-slate-900/50 p-4 rounded border border-slate-800 flex items-center justify-between col-span-1 md:col-span-2 mt-2">
+                                    <div>
+                                      <p className="text-2xl font-bold text-cyan-400">
+                                        {formatMoney((proc.valorTotalEstimado || valorTotal) - totalEmpenhado)}
+                                      </p>
+                                      <p className="text-xs text-slate-500 uppercase font-bold">Saldo Disponível na Ata</p>
+                                    </div>
+                                    <div className="text-right">
+                                      <p className="text-xs text-slate-400 mb-1">Vigência até</p>
+                                      <p className="text-sm font-bold text-white">
+                                        {proc.dataVigenciaAta ? new Date(proc.dataVigenciaAta).toLocaleDateString('pt-BR') : "Indefinido"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                )}
 
                                 <div className="bg-slate-900/50 p-4 rounded border border-slate-800 flex items-center justify-between">
                                   <div>

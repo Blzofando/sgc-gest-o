@@ -107,10 +107,39 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                     if (processo && processo.itens) {
                         itensDetalhados = itensDoVinculo.map((itemVinculo: any) => {
                             const itemOriginal = processo.itens.find((i: any) => i.id === itemVinculo.itemId);
+
+                            // Lógica SRP: Se for Remessa Contínua (legacy) ou SRP, inicia com 0.
+                            const isSRP = processo.tipoFornecimento === "SRP" || processo.tipoFornecimento === "REMESSA_CONTINUA";
+                            const qtdInicial = isSRP ? 0 : (itemOriginal ? (itemOriginal.quantidade || 1) : 1);
+
+                            let saldoDisponivel = itemOriginal ? (itemOriginal.quantidade || 0) : 0;
+
+                            if (isSRP) {
+                                // Calcular quanto já foi empenhado deste item em OUTROS empenhos deste processo
+                                // Filtrar empenhos do mesmo processo (excluindo o atual se estiver editando)
+                                const outrosEmpenhos = listas.empenhos.filter(e =>
+                                    e.id_processo === procId &&
+                                    (!empenhoId || e.id !== empenhoId)
+                                );
+
+                                // Somar a quantidade deste item em outros empenhos
+                                let qtdJaEmpenhada = 0;
+                                outrosEmpenhos.forEach(emp => {
+                                    const itemNoEmpenho = emp.itens?.find((i: any) => i.itemId === itemVinculo.itemId || i.descricao === itemVinculo.descricao);
+                                    if (itemNoEmpenho) {
+                                        qtdJaEmpenhada += (parseFloat(itemNoEmpenho.quantidade) || 0);
+                                    }
+                                });
+
+                                saldoDisponivel = (itemOriginal?.quantidade || 0) - qtdJaEmpenhada;
+                                if (saldoDisponivel < 0) saldoDisponivel = 0;
+                            }
+
                             return {
                                 ...itemVinculo,
                                 descricao: itemOriginal ? itemOriginal.descricao : "Item não encontrado",
-                                quantidade: itemOriginal ? (itemOriginal.quantidade || 1) : 1
+                                quantidade: qtdInicial,
+                                saldoDisponivel: isSRP ? saldoDisponivel : undefined // Guardar o saldo disponível para validação
                             };
                         });
                     } else {
@@ -172,7 +201,8 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                 id_fornecedor: fornId,
                 id_nc: ncId,
                 valorEmpenhado: valorEmpenhoNum,
-                itens: itensEmpenho,
+                valorEmpenhado: valorEmpenhoNum,
+                itens: itensEmpenho.map((i: any) => ({ ...i, quantidade: parseFloat(i.quantidade) || 0 })),
                 status: initialData?.status || "EMPENHADO"
             };
 
@@ -232,6 +262,13 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
 
         if (fornecedoresDoProcesso.length === 0) return false; // Sem fornecedores, não mostrar
 
+        // Verificar se é SRP (ou legado REMESSA_CONTINUA)
+        const isSRP = p.tipoFornecimento === "SRP" || p.tipoFornecimento === "REMESSA_CONTINUA";
+
+        // Se for SRP, mostramos se ainda NÃO estiver concluído/cancelado (independente de ter empenho)
+        if (isSRP) return true;
+
+        // Se NÃO for SRP (Remessa Única), verificamos se já tem empenho
         // Verificar se algum fornecedor NÃO tem empenho para esse processo
         const algumFornecedorSemEmpenho = fornecedoresDoProcesso.some((f: any) => {
             const temEmpenho = listas.empenhos.some((emp: any) =>
@@ -270,6 +307,22 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
 
         return matchND && (temSaldo || isSameNC);
     });
+
+    const handleQuantityChange = (index: number, newQty: string) => {
+        const novosItens = [...itensEmpenho];
+        // Guarda string para permitir digitação de decimais (ex: "1.")
+        novosItens[index].quantidade = newQty;
+
+        setItensEmpenho(novosItens);
+
+        // Recalcular valor total
+        const novoTotal = novosItens.reduce((acc: number, item: any) => {
+            const qtd = parseFloat(item.quantidade) || 0;
+            const val = parseFloat(item.valorGanho) || 0;
+            return acc + (qtd * val);
+        }, 0);
+        setValor(novoTotal.toFixed(2));
+    };
 
     return (
         <form onSubmit={handleSave} className="space-y-6">
@@ -404,17 +457,40 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                     </div>
                 </div>
 
-                {/* Lista de Itens (Resumo) */}
+                {/* Lista de Itens (Editável) */}
                 {itensEmpenho.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-slate-800">
-                        <p className="text-xs text-slate-500 mb-2 uppercase font-bold">Itens do Empenho</p>
-                        <div className="max-h-[150px] overflow-y-auto space-y-1">
+                        <p className="text-xs text-slate-500 mb-2 uppercase font-bold">Itens do Empenho (Defina as Quantidades)</p>
+                        <div className="max-h-[300px] overflow-y-auto space-y-2 pr-2">
                             {itensEmpenho.map((item: any, idx: number) => (
-                                <div key={idx} className="text-xs flex justify-between p-2 bg-slate-900 rounded border border-slate-800/50">
-                                    <span className="truncate max-w-[70%]">{item.descricao || `Item ${idx + 1}`}</span>
-                                    <span className="font-mono text-emerald-400">
-                                        {item.quantidade}x {formatMoney(item.valorGanho)} = {formatMoney(item.quantidade * item.valorGanho)}
-                                    </span>
+                                <div key={item.itemId || idx} className="flex flex-col md:flex-row gap-2 md:items-center p-3 bg-slate-900 rounded border border-slate-800/50">
+                                    <div className="flex-1 text-xs">
+                                        <p className="font-bold text-slate-300">{item.descricao}</p>
+                                        <p className="text-slate-500">Valor Unit.: {formatMoney(item.valorGanho)}</p>
+                                    </div>
+                                    <div className="w-full md:w-32">
+                                        <Label className="text-[10px] text-slate-500">Quantidade</Label>
+                                        <Input
+                                            type="number"
+                                            min="0"
+                                            max={item.saldoDisponivel} // Limitar ao saldo disponível se existir
+                                            step="0.01"
+                                            value={item.quantidade}
+                                            onChange={(e) => handleQuantityChange(idx, e.target.value)}
+                                            className="h-8 text-right bg-slate-950 border-slate-700"
+                                        />
+                                        {item.saldoDisponivel !== undefined && (
+                                            <p className="text-[10px] text-slate-500 text-right mt-1">
+                                                Max: {item.saldoDisponivel}
+                                            </p>
+                                        )}
+                                    </div>
+                                    <div className="w-full md:w-32 text-right">
+                                        <Label className="text-[10px] text-slate-500">Subtotal</Label>
+                                        <div className="font-mono text-emerald-400 font-bold text-sm">
+                                            {formatMoney((item.quantidade || 0) * (item.valorGanho || 0))}
+                                        </div>
+                                    </div>
                                 </div>
                             ))}
                         </div>
