@@ -17,7 +17,7 @@ export interface Processo {
 
     // Novos Campos
     categoria: "MATERIAL" | "SERVICO";
-    tipoFornecimento: "REMESSA_UNICA" | "SRP";
+    tipoFornecimento: "REMESSA_UNICA" | "SRP" | "REMESSA_CONTINUA";
     status: ProcessoStatus;
 
     valorTotalEstimado?: number;
