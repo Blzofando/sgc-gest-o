@@ -135,12 +135,15 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                                 if (saldoDisponivel < 0) saldoDisponivel = 0;
                             }
 
-                            return {
+                            const newItem = {
                                 ...itemVinculo,
                                 descricao: itemOriginal ? itemOriginal.descricao : "Item não encontrado",
                                 quantidade: qtdInicial,
-                                saldoDisponivel: isSRP ? saldoDisponivel : undefined // Guardar o saldo disponível para validação
                             };
+                            if (isSRP) {
+                                newItem.saldoDisponivel = saldoDisponivel;
+                            }
+                            return newItem;
                         });
                     } else {
                         // Fallback
@@ -202,7 +205,12 @@ export function EmpenhoForm({ onSuccess, initialData, empenhoId }: EmpenhoFormPr
                 id_nc: ncId,
                 valorEmpenhado: valorEmpenhoNum,
 
-                itens: itensEmpenho.map((i: any) => ({ ...i, quantidade: parseFloat(i.quantidade) || 0 })),
+                itens: itensEmpenho.map((i: any) => {
+                    const newItem = { ...i, quantidade: parseFloat(i.quantidade) || 0 };
+                    // Remove propriedades undefined que o Firebase não aceita
+                    Object.keys(newItem).forEach(key => newItem[key] === undefined && delete newItem[key]);
+                    return newItem;
+                }),
                 status: initialData?.status || "EMPENHADO"
             };
 

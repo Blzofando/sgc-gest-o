@@ -43,14 +43,17 @@ export function DiariaForm({ onSuccess, initialData, diariaId }: DiariaFormProps
     const [ncId, setNcId] = useState("");
     const [ncs, setNcs] = useState<any[]>([]);
     const [empenhos, setEmpenhos] = useState<any[]>([]);
+    const [diarias, setDiarias] = useState<any[]>([]);
 
     // Carregar NCs
     useEffect(() => {
         const loadNcs = async () => {
             const ncsSnap = await getDocs(collection(db, "ncs"));
             const empSnap = await getDocs(collection(db, "empenhos"));
+            const diariasSnap = await getDocs(collection(db, "diarias"));
             setNcs(ncsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
             setEmpenhos(empSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+            setDiarias(diariasSnap.docs.map(d => ({ id: d.id, ...d.data() })));
         };
         loadNcs();
     }, []);
@@ -105,13 +108,32 @@ export function DiariaForm({ onSuccess, initialData, diariaId }: DiariaFormProps
     // Calcular valor total
     const valorTotal = militares.reduce((acc, m) => acc + (m.numDiarias * m.valorUnitario), 0);
 
-    // Calcular saldo da NC selecionada
+    // Calcular o saldo do crédito específico de Diárias (339015) da NC selecionada
     const selectedNC = ncs.find(n => n.id === ncId);
-    const empenhosNC = empenhos.filter(e => e.id_nc === selectedNC?.id);
-    const totalEmpenhado = empenhosNC.reduce((acc, e) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
-    const saldoNCCalculado = selectedNC ? (parseFloat(selectedNC.valorTotal) || 0) - totalEmpenhado : 0;
+    let valorTotalDiariasNC = 0;
+    if (selectedNC) {
+        // Se a NC inteira for 339015
+        const ndPaiArray = selectedNC.nd ? String(selectedNC.nd).split(/[,;|\s]+/).map((s: string) => s.trim()) : [];
+        if (ndPaiArray.includes("339015")) {
+            valorTotalDiariasNC = parseFloat(selectedNC.valorTotal) || 0;
+        } else {
+            // Somar apenas os sub-créditos que têm 339015
+            valorTotalDiariasNC = (selectedNC.creditos || []).reduce((acc: number, c: any) => {
+                const ndFilhoArray = c.nd ? String(c.nd).split(/[,;|\s]+/).map((s: string) => s.trim()) : [];
+                return ndFilhoArray.includes("339015") ? acc + (parseFloat(c.valor) || 0) : acc;
+            }, 0);
+        }
+    }
 
-    // Se editando, considerar valor anterior
+    const empenhosNC = empenhos.filter(e => e.id_nc === selectedNC?.id && e.nd === "339015");
+    const diariasDestaNCAmplo = diarias.filter(d => d.id_nc === selectedNC?.id);
+    const totalEmpenhado = empenhosNC.reduce((acc, e) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
+    const totalDiariasEmitidas = diariasDestaNCAmplo.reduce((acc, d) => acc + (parseFloat(d.valorTotal) || 0), 0);
+
+    // O Saldo Calculado é o teto do crédito (339015) - Empenhos(ND=339015) - DiariasEmitidas
+    const saldoNCCalculado = selectedNC ? valorTotalDiariasNC - totalEmpenhado - totalDiariasEmitidas : 0;
+
+    // Se editando, considerar valor anterior (que já está deduzido em totalDiariasEmitidas)
     const valorAnterior = initialData?.valorTotal || 0;
     const saldoBase = initialData && initialData.id_nc === ncId
         ? saldoNCCalculado + valorAnterior
@@ -121,15 +143,38 @@ export function DiariaForm({ onSuccess, initialData, diariaId }: DiariaFormProps
     // Filtrar NCs com ND 339015 (Diárias) e saldo disponível
     const ncsFiltradas = ncs.filter(n => {
         // Excluir NCs recolhidas
-        if (n.recolhidoManual && !(initialData && initialData.id_nc === n.id)) return false;
+        if (n.recolhidoManual) {
+            const isSameNC = initialData && initialData.id_nc === n.id;
+            if (!isSameNC) return false;
+        }
 
         // Filtrar por ND de Diárias (339015)
-        const temNdDiarias = n.creditos?.some((c: any) => c.nd === "339015") || n.nd === "339015";
+        // Permite se houver o código exato '339015' seja no pai ou na lista de créditos
+        const ndPaiArray = n.nd ? String(n.nd).split(/[,;|\s]+/).map(s => s.trim()) : [];
+        const temNdDiarias =
+            ndPaiArray.includes("339015") ||
+            (n.creditos?.some((c: any) => {
+                const ndFilhoArray = c.nd ? String(c.nd).split(/[,;|\s]+/).map(s => s.trim()) : [];
+                return ndFilhoArray.includes("339015");
+            }));
 
-        // Calcular saldo
-        const empenhosDestaNC = empenhos.filter(e => e.id_nc === n.id);
+        // Calcular saldo dinâmico específico para 339015
+        let valorTeto339015 = 0;
+        if (ndPaiArray.includes("339015")) {
+            valorTeto339015 = parseFloat(n.valorTotal) || 0;
+        } else {
+            valorTeto339015 = (n.creditos || []).reduce((acc: number, c: any) => {
+                const ndFilhoArray = c.nd ? String(c.nd).split(/[,;|\s]+/).map((s: string) => s.trim()) : [];
+                return ndFilhoArray.includes("339015") ? acc + (parseFloat(c.valor) || 0) : acc;
+            }, 0);
+        }
+
+        const empenhosDestaNC = empenhos.filter(e => e.id_nc === n.id && e.nd === "339015");
+        const diariasDestaNC = diarias.filter(d => d.id_nc === n.id);
         const totalEmp = empenhosDestaNC.reduce((acc, e) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
-        const saldoDisponivel = (parseFloat(n.valorTotal) || 0) - totalEmp;
+        const totalDiarias = diariasDestaNC.reduce((acc, d) => acc + (parseFloat(d.valorTotal) || 0), 0);
+
+        const saldoDisponivel = valorTeto339015 - totalEmp - totalDiarias;
         const temSaldo = saldoDisponivel > 0.01;
 
         // Se editando e for a mesma NC, sempre mostrar
@@ -387,12 +432,28 @@ export function DiariaForm({ onSuccess, initialData, diariaId }: DiariaFormProps
                                 </div>
                             ) : (
                                 ncsFiltradas.map(n => {
-                                    const empenhosDestaNC = empenhos.filter(e => e.id_nc === n.id);
+                                    // Mesmo cálculo do ncsFiltradas para exibir corretamente o "Saldo"
+                                    const ndsDoPai = n.nd ? String(n.nd).split(/[,;|\s]+/).map(s => s.trim()) : [];
+                                    let valorTeto = 0;
+                                    if (ndsDoPai.includes("339015")) {
+                                        valorTeto = parseFloat(n.valorTotal) || 0;
+                                    } else {
+                                        valorTeto = (n.creditos || []).reduce((acc: number, c: any) => {
+                                            const ndsFilho = c.nd ? String(c.nd).split(/[,;|\s]+/).map((s: string) => s.trim()) : [];
+                                            return ndsFilho.includes("339015") ? acc + (parseFloat(c.valor) || 0) : acc;
+                                        }, 0);
+                                    }
+
+                                    const empenhosDestaNC = empenhos.filter(e => e.id_nc === n.id && e.nd === "339015");
+                                    const diariasDestaNC = diarias.filter(d => d.id_nc === n.id);
                                     const totalEmp = empenhosDestaNC.reduce((acc, e) => acc + (parseFloat(e.valorEmpenhado) || 0), 0);
-                                    const saldoReal = (parseFloat(n.valorTotal) || 0) - totalEmp;
+                                    const totalDiarias = diariasDestaNC.reduce((acc, d) => acc + (parseFloat(d.valorTotal) || 0), 0);
+
+                                    const saldoReal = valorTeto - totalEmp - totalDiarias;
+
                                     return (
                                         <SelectItem key={n.id} value={n.id}>
-                                            NC: {n.numero} | Saldo: {formatMoney(saldoReal)}
+                                            NC: {n.numero} | Crédito para Diárias: {formatMoney(saldoReal)}
                                         </SelectItem>
                                     );
                                 })

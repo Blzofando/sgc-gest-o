@@ -71,13 +71,12 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
     // Initialize
     useEffect(() => {
         if (isNew) {
-            if (data.tipo === 'ORDINARIO') {
+            if (data.tipo === 'ORDINARIO' || data.tipo === 'ESTIMATIVO') {
                 setSelectedItems(data.itens.map((i: any) => ({ ...i, quantidadeSolicitada: i.quantidade })));
-                setCurrentStep(1);
             } else {
                 setSelectedItems(data.itens.map((i: any) => ({ ...i, quantidadeSolicitada: 0 })));
-                setCurrentStep(0);
             }
+            setCurrentStep(0);
         } else {
             // Existing Delivery
             setSelectedItems(data.itens || []);
@@ -370,20 +369,84 @@ export function EntregaWizard({ data, isNew, onClose, onSuccess }: EntregaWizard
                                         <p className="text-sm font-medium text-slate-200">{item.descricao}</p>
                                         <p className="text-xs text-slate-500 mt-1">Disponível: {item.quantidade}</p>
                                     </div>
-                                    <Input
-                                        type="number"
-                                        className="w-24 bg-slate-950 border-slate-700 text-right"
-                                        value={item.quantidadeSolicitada}
-                                        onChange={(e) => {
-                                            const val = parseFloat(e.target.value) || 0;
-                                            const newItems = [...selectedItems];
-                                            newItems[idx].quantidadeSolicitada = Math.min(val, item.quantidade);
-                                            setSelectedItems(newItems);
-                                            // Debounced save for inputs
-                                            if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
-                                            saveTimeoutRef.current = setTimeout(() => autoSave({ selectedItems: newItems }), 1000);
-                                        }}
-                                    />
+                                    {data.tipo === 'ESTIMATIVO' ? (
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-slate-500">Qtd</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="w-16 bg-slate-950/50 border-slate-800 text-right opacity-50"
+                                                    value={item.quantidadeSolicitada}
+                                                    disabled
+                                                />
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-emerald-500 font-bold">Valor (R$)</Label>
+                                                <Input
+                                                    type="number"
+                                                    step="0.01"
+                                                    className="w-28 bg-emerald-950/20 border-emerald-900/50 text-emerald-400 font-bold text-right"
+                                                    value={item.valorGanho || ""}
+                                                    onChange={(e) => {
+                                                        const newItems = [...selectedItems];
+                                                        newItems[idx].valorGanho = e.target.value;
+                                                        setSelectedItems(newItems);
+                                                        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                                                        saveTimeoutRef.current = setTimeout(() => autoSave({ selectedItems: newItems }), 1000);
+                                                    }}
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : data.tipo === 'GLOBAL' ? (
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-slate-500">Qtd a Entregar</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="w-24 bg-slate-950 border-slate-700 text-right"
+                                                    value={item.quantidadeSolicitada}
+                                                    onChange={(e) => {
+                                                        const val = parseFloat(e.target.value) || 0;
+                                                        const newItems = [...selectedItems];
+                                                        newItems[idx].quantidadeSolicitada = Math.min(val, item.quantidade);
+                                                        setSelectedItems(newItems);
+                                                        if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+                                                        saveTimeoutRef.current = setTimeout(() => autoSave({ selectedItems: newItems }), 1000);
+                                                    }}
+                                                />
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-slate-500">Valor (R$)</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="w-24 bg-slate-950/50 border-slate-800 text-right opacity-50 text-slate-400"
+                                                    value={item.valorGanho || ""}
+                                                    disabled
+                                                />
+                                            </div>
+                                        </div>
+                                    ) : (
+                                        <div className="flex items-center gap-4">
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-slate-500">Qtd a Entregar</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="w-24 bg-slate-950/50 border-slate-800 text-right opacity-50 text-slate-400"
+                                                    value={item.quantidadeSolicitada}
+                                                    disabled
+                                                />
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                                <Label className="text-[10px] text-slate-500">Valor Unitário (R$)</Label>
+                                                <Input
+                                                    type="number"
+                                                    className="w-24 bg-slate-950/50 border-slate-800 text-right opacity-50 text-slate-400"
+                                                    value={item.valorGanho || ""}
+                                                    disabled
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                             ))}
                         </div>
